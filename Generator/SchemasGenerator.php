@@ -24,6 +24,10 @@ use Smithy\Codegen\Writer\PhpCodeWriter;
  */
 final class SchemasGenerator
 {
+    private const DIRECT_MEMBER_TRAITS_BY_ID = [
+        'smithy.rules#contextParam' => true,
+    ];
+
     /** Map from model trait string IDs -> Schema::T_* int constants */
     private const TRAIT_INDEX_MAP = [
         'smithy.api#xmlName' => 0,
@@ -204,8 +208,6 @@ final class SchemasGenerator
 
     /**
      * Write the lazy init method for a single structure shape.
-     *
-     * @return void
      */
     private function writeInitMethod(PhpCodeWriter $writer, string $shapeId): void
     {
@@ -312,8 +314,6 @@ final class SchemasGenerator
      * proxies onto `Schemas::foo()` (mirroring how struct schemas already
      * work), so the Schema graph collapses to one instance per shape per
      * process.
-     *
-     * @return void
      */
     private function writeUnionInitMethod(PhpCodeWriter $writer, string $shapeId): void
     {
@@ -435,6 +435,10 @@ final class SchemasGenerator
         $traits = $this->buildMemberTraits($memberTraits);
         $this->propagateTargetTraits($targetId, $traits);
         $traitsStr = $this->renderTraitsArray($traits);
+        $directTraitsByIdStr = $this->renderDirectTraitsById(
+            $memberTraits,
+            self::DIRECT_MEMBER_TRAITS_BY_ID
+        );
 
         // Build collection sub-schema parameters
         $collectionParams = $this->buildCollectionParams(
@@ -461,7 +465,7 @@ final class SchemasGenerator
             . "memberName: '{$memberName}', "
             . "memberIndex: {$index}"
             . "{$unionMembers}{$collectionParams}{$traitsStr}"
-            . "{$targetClassStr})";
+            . "{$directTraitsByIdStr}{$targetClassStr})";
     }
 
     /**
@@ -519,8 +523,6 @@ final class SchemasGenerator
 
     /**
      * Propagate serialization-relevant traits from the target shape to the member traits.
-     *
-     * @return void
      */
     private function propagateTargetTraits(string $targetId, array &$traits): void
     {
@@ -583,6 +585,29 @@ final class SchemasGenerator
     }
 
     /**
+     * @param array<string, mixed> $traits
+     * @param array<string, true> $preservedTraits
+     */
+    private function renderDirectTraitsById(
+        array $traits,
+        array $preservedTraits
+    ): string
+    {
+        $parts = [];
+        foreach ($preservedTraits as $traitId => $_) {
+            if (\array_key_exists($traitId, $traits)) {
+                $parts[] = PhpCodeWriter::exportLiteral($traitId)
+                    . ' => '
+                    . PhpCodeWriter::exportLiteral($traits[$traitId]);
+            }
+        }
+
+        return $parts === []
+            ? ''
+            : ', directTraitsById: [' . \implode(', ', $parts) . ']';
+    }
+
+    /**
      * @return array<string, int>
      */
     private function traitIndexMap(): array
@@ -620,6 +645,10 @@ final class SchemasGenerator
             $memberTraits = $targetShape['member']['traits'] ?? [];
             $listMemberTraits = $this->buildMemberTraits($memberTraits);
             $listMemberTraitsStr = $this->renderTraitsArray($listMemberTraits);
+            $listMemberDirectTraitsByIdStr = $this->renderDirectTraitsById(
+                $memberTraits,
+                self::DIRECT_MEMBER_TRAITS_BY_ID
+            );
             $memberMembers = $this->buildInlineMembers(
                 $memberTarget,
                 $memberType,
@@ -638,7 +667,8 @@ final class SchemasGenerator
             return ", listMember: new Schema(id: '{$memberTarget}', "
                 . "type: {$memberTypeEnum}"
                 . "{$memberMembers}{$memberCollectionParams}"
-                . "{$listMemberTraitsStr}{$memberTargetClass})";
+                . "{$listMemberTraitsStr}{$listMemberDirectTraitsByIdStr}"
+                . "{$memberTargetClass})";
         }
 
         if ($targetType === 'map') {
@@ -656,8 +686,16 @@ final class SchemasGenerator
             $keyTraitsStr = $this->renderTraitsArray(
                 $this->buildMemberTraits($keyTraits)
             );
+            $keyDirectTraitsByIdStr = $this->renderDirectTraitsById(
+                $keyTraits,
+                self::DIRECT_MEMBER_TRAITS_BY_ID
+            );
             $valueTraitsStr = $this->renderTraitsArray(
                 $this->buildMemberTraits($valueTraits)
+            );
+            $valueDirectTraitsByIdStr = $this->renderDirectTraitsById(
+                $valueTraits,
+                self::DIRECT_MEMBER_TRAITS_BY_ID
             );
             $valueMembers = $this->buildInlineMembers(
                 $valueTarget,
@@ -675,11 +713,13 @@ final class SchemasGenerator
             );
 
             return ", mapKey: new Schema(id: '{$keyTarget}', "
-                . "type: {$keyTypeEnum}{$keyTraitsStr}), "
+                . "type: {$keyTypeEnum}{$keyTraitsStr}"
+                . "{$keyDirectTraitsByIdStr}), "
                 . "mapValue: new Schema(id: '{$valueTarget}', "
                 . "type: {$valueTypeEnum}"
                 . "{$valueMembers}{$valueCollectionParams}"
-                . "{$valueTraitsStr}{$valueTargetClass})";
+                . "{$valueTraitsStr}{$valueDirectTraitsByIdStr}"
+                . "{$valueTargetClass})";
         }
 
         return '';
@@ -719,6 +759,10 @@ final class SchemasGenerator
             $memTypeEnum = $this->smithyTypeToEnum($memTargetType);
             $memTraits = $this->buildMemberTraits($memberDef['traits'] ?? []);
             $memTraitsStr = $this->renderTraitsArray($memTraits);
+            $memDirectTraitsByIdStr = $this->renderDirectTraitsById(
+                $memberDef['traits'] ?? [],
+                self::DIRECT_MEMBER_TRAITS_BY_ID
+            );
             $memCollectionParams = $this->buildCollectionParams(
                 $memTargetId,
                 $memTargetType,
@@ -732,7 +776,8 @@ final class SchemasGenerator
                 . "type: {$memTypeEnum}, "
                 . "memberName: '{$memberName}', "
                 . "memberIndex: {$index}"
-                . "{$memCollectionParams}{$memTraitsStr}{$targetClassStr})";
+                . "{$memCollectionParams}{$memTraitsStr}"
+                . "{$memDirectTraitsByIdStr}{$targetClassStr})";
             $index++;
         }
 

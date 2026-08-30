@@ -23,6 +23,10 @@ use Smithy\Core\Model\EffectiveAuthSchemes;
 final class OperationGenerator
 {
     private const RPC_V2_CBOR = 'smithy.protocols#rpcv2Cbor';
+    private const DIRECT_OPERATION_TRAITS_BY_ID = [
+        'smithy.rules#operationContextParams' => true,
+        'smithy.rules#staticContextParams' => true,
+    ];
 
     /** @var array<string, string>|null */
     private ?array $serviceIdByOperation = null;
@@ -321,7 +325,11 @@ final class OperationGenerator
             isset($traits['smithy.api#readonly']),
             isset($traits['smithy.api#idempotent']),
             $traits['smithy.api#requestCompression']['encodings'] ?? null,
-            $this->settings->operationSchemaTraits[$shapeId] ?? []
+            $this->settings->operationSchemaTraits[$shapeId] ?? [],
+            $this->filterDirectTraitsById(
+                $traits,
+                self::DIRECT_OPERATION_TRAITS_BY_ID
+            )
         );
         $writer->writeLine();
 
@@ -583,6 +591,7 @@ final class OperationGenerator
      * @param array<string, array{class: string, shapeId: string}> $errorMap
      *        Error discriminator metadata.
      * @param array<int, mixed> $configuredTraits
+     * @param array<string, mixed> $directTraitsById
      */
     private function writeOperationSchemaMethod(
         PhpCodeWriter $writer,
@@ -595,7 +604,8 @@ final class OperationGenerator
         bool $readOnly,
         bool $idempotent,
         ?array $requestCompressionEncodings,
-        array $configuredTraits
+        array $configuredTraits,
+        array $directTraitsById
     ): void
     {
         $writer->writeDocBlock(['Get the shape schema.']);
@@ -659,6 +669,20 @@ final class OperationGenerator
                 foreach (\explode("\n", $entry) as $line) {
                     $writer->writeLine($line);
                 }
+            }
+            $writer->popIndent();
+            $writer->writeLine('],');
+        }
+        if ($directTraitsById !== []) {
+            $writer->writeLine('directTraitsById: [');
+            $writer->pushIndent();
+            foreach ($directTraitsById as $traitId => $value) {
+                $writer->writeLine(
+                    $this->exportLiteral($traitId)
+                        . ' => '
+                        . $this->exportLiteral($value)
+                        . ','
+                );
             }
             $writer->popIndent();
             $writer->writeLine('],');
@@ -812,6 +836,27 @@ final class OperationGenerator
     private function exportLiteral(mixed $value): string
     {
         return PhpCodeWriter::exportLiteral($value);
+    }
+
+    /**
+     * @param array<string, mixed> $traits
+     * @param array<string, true> $preservedTraits
+     *
+     * @return array<string, mixed>
+     */
+    private function filterDirectTraitsById(
+        array $traits,
+        array $preservedTraits
+    ): array
+    {
+        $directTraitsById = [];
+        foreach ($preservedTraits as $traitId => $_) {
+            if (\array_key_exists($traitId, $traits)) {
+                $directTraitsById[$traitId] = $traits[$traitId];
+            }
+        }
+
+        return $directTraitsById;
     }
 
     private function cleanDocumentation(string $text): string
