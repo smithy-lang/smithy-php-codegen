@@ -17,6 +17,10 @@ final class ClientGenerator
     /** Shared paginator returned by generated paginated methods. */
     private const PAGINATOR = 'Smithy\\Client\\Pagination\\Paginator';
 
+    /** Strongly-typed collection of client plugins. */
+    private const PLUGIN_COLLECTION =
+        'Smithy\\Client\\Plugin\\PluginCollection';
+
     /** Per-request overrides accepted by generated operation methods. */
     private const REQUEST_OVERRIDE_CONFIG =
         'Smithy\\Client\\RequestOverrideConfig';
@@ -227,17 +231,20 @@ final class ClientGenerator
 
         if ($pluginClasses !== []) {
             $configClassName = $shortName . 'ClientConfig';
+            $writer->addImport(self::PLUGIN_COLLECTION);
             foreach ($pluginClasses as $pluginClass) {
                 $writer->addImport($pluginClass);
             }
             $writer->writeLine(
                 "public function __construct({$configClassName} \$config, "
-                . 'array $plugins = [])'
+                . 'PluginCollection $plugins = new PluginCollection())'
             );
             $writer->openBlock('{');
             foreach ($pluginClasses as $pluginClass) {
                 $writer->writeLine(
-                    '$plugins[] = new ' . $this->shortName($pluginClass) . '();'
+                    '$plugins = $plugins->add(new '
+                    . $this->shortName($pluginClass)
+                    . '());'
                 );
             }
             $writer->writeLine('parent::__construct($config, $plugins);');

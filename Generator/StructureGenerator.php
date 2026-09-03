@@ -868,7 +868,8 @@ final class StructureGenerator
             "@param {$phpType->nullableDocType()} \$token"
         ]);
         $writer->writeLine(
-            'public function withPaginationToken(mixed $token): self'
+            'public function withPaginationToken('
+                . 'string|array|null $token): self'
         );
         $writer->openBlock('{');
         $writer->writeLine('$copy = clone $this;');

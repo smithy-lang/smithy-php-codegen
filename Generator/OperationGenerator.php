@@ -150,11 +150,6 @@ final class OperationGenerator
                 'Smithy\\Core\\Shape\\Document\\StructDocument'
             );
         }
-        if ($paginatedTrait !== null) {
-            $writer->addImport(
-                'Smithy\\Client\\Pagination\\PaginationSchemaExtensionProvider'
-            );
-        }
         // HTTP binding data is emitted as schema traits for the protocol
         // layer to read through the operation schema.
 
@@ -702,7 +697,7 @@ final class OperationGenerator
         array $paginatedTrait
     ): string
     {
-        $lines = ['PaginationSchemaExtensionProvider::TRAIT => ['];
+        $lines = ['Schema::T_PAGINATED => ['];
         $fields = ['inputToken', 'outputToken', 'items', 'pageSize'];
         foreach ($fields as $field) {
             if (!\array_key_exists($field, $paginatedTrait)) {
