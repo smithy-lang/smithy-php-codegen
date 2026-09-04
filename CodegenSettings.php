@@ -74,10 +74,10 @@ final class CodegenSettings
         public readonly string $clientBaseClass =
             'Smithy\\Client\\AbstractClient',
         public readonly array $clientPluginsByOperationTrait = [
-            'smithy.api#httpChecksumRequired' =>
-                'Smithy\\Client\\Plugin\\HttpChecksumPlugin',
             'smithy.api#requestCompression' =>
-                'Smithy\\Client\\Plugin\\RequestCompressionPlugin'
+                'Smithy\\Client\\Plugin\\RequestCompressionPlugin',
+            'smithy.api#httpChecksumRequired' =>
+                'Smithy\\Client\\Plugin\\HttpChecksumPlugin'
         ],
         public readonly bool $generateClient = true,
         public readonly bool $generateClientConfig = true,
@@ -161,10 +161,10 @@ final class CodegenSettings
                 'clientPluginsByOperationTrait',
                 'client_plugins_by_operation_trait',
                 [
-                    'smithy.api#httpChecksumRequired' =>
-                        'Smithy\\Client\\Plugin\\HttpChecksumPlugin',
                     'smithy.api#requestCompression' =>
-                        'Smithy\\Client\\Plugin\\RequestCompressionPlugin'
+                        'Smithy\\Client\\Plugin\\RequestCompressionPlugin',
+                    'smithy.api#httpChecksumRequired' =>
+                        'Smithy\\Client\\Plugin\\HttpChecksumPlugin'
                 ]
             ),
             generateClient: self::booleanAliasedValue(
