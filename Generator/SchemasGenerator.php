@@ -745,7 +745,9 @@ final class SchemasGenerator
         }
         $visited[$targetId] = true;
 
-        $members = $this->model->getMembers($targetId);
+        $members = $targetType === 'structure'
+            ? $this->getMembersIndexed($targetId)
+            : $this->model->getMembers($targetId);
         if (empty($members)) {
             return '';
         }

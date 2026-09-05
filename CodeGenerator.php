@@ -54,9 +54,10 @@ final class CodeGenerator
         // On first run the file doesn't exist and this returns null,
         // yielding fresh ordering - same behavior as before this
         // feature landed. On regen, the evaluator's map is threaded
-        // through the two generators that emit member-indexed output
+        // through the generators that emit or consume member-indexed output
         // (`StructureGenerator` for the class files,
-        // `SchemasGenerator` for the schema registry). The check is
+        // `SchemasGenerator` for the schema registry, and
+        // `OperationGenerator` for stream and HTTP path bindings). The check is
         // gated by `CodegenSettings::$preserveExistingMemberOrder`
         // so callers can opt out for scratch generations or a
         // deliberate ABI-break release.
@@ -88,7 +89,8 @@ final class CodeGenerator
         $this->operationGenerator = new OperationGenerator(
             $model,
             $this->symbolProvider,
-            $settings
+            $settings,
+            $priorCodegen
         );
         $this->serviceGenerator = new ServiceGenerator($model, $settings);
         $this->serviceExceptionGenerator = new ServiceExceptionGenerator(

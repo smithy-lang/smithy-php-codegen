@@ -399,84 +399,11 @@ final class StructureGenerator
     }
 
     /**
-     * Group members into [required, defaulted, optional] for constructor
-     * parameter ordering.
+     * Get all members in constructor and schema-index order.
      *
-     * When no prior generation exists for this shape, this is the classic
-     * partition - required first (nullable, `= null`), defaulted second
-     * (non-nullable with literal `@default`), optional last (nullable,
-     * `= null`). Iteration index of the merged array matches each
-     * member's assigned `memberIndex`.
-     *
-     * When a prior generation exists, the return preserves each historical
-     * member in its original bucket even if its required-ness shifted.
-     * This is bucket-policy A from the design discussion: the historical
-     * position wins on regeneration. A member that flipped from optional
-     * to required stays in the same slot. the runtime enforcement of
-     * `@required` happens at serialization, not at the constructor.
-     * New-in-this-generation members are appended to their appropriate
-     * bucket (required / defaulted / optional as per current model).
-     *
-     * @return array{array<string, array>, array<string, array>, array<string, array>}
-     *                             [$required, $defaulted, $optional]
-     */
-    private function getMembersInConstructorOrder(string $shapeId): array
-    {
-        $members = $this->model->getMembers($shapeId);
-        $preservedOrder = $this->priorCodegen?->memberOrderFor($shapeId);
-
-        $required = [];
-        $defaulted = [];
-        $optional = [];
-
-        // First pass: honor any historical order. Each preserved member
-        // is placed into whichever bucket the *original* generation put
-        // it in - which we infer from the current model traits (they're
-        // the same unless the model changed, and if it did, bucket-
-        // policy A keeps it in its historical position anyway).
-        $consumed = [];
-        if ($preservedOrder !== null) {
-            foreach ($preservedOrder as $memberName) {
-                if (!isset($members[$memberName])) {
-                    continue;
-                }
-                if ($this->model->isMemberRequired($shapeId, $memberName)) {
-                    $required[$memberName] = $members[$memberName];
-                } elseif ($this->model->isMemberDefaulted(
-                    $shapeId,
-                    $memberName
-                )) {
-                    $defaulted[$memberName] = $members[$memberName];
-                } else {
-                    $optional[$memberName] = $members[$memberName];
-                }
-                $consumed[$memberName] = true;
-            }
-        }
-
-        // Second pass: newcomers not covered by the preserved list get
-        // appended in their natural bucket.
-        foreach ($members as $memberName => $memberDef) {
-            if (isset($consumed[$memberName])) {
-                continue;
-            }
-            if ($this->model->isMemberRequired($shapeId, $memberName)) {
-                $required[$memberName] = $memberDef;
-            } elseif ($this->model->isMemberDefaulted($shapeId, $memberName)) {
-                $defaulted[$memberName] = $memberDef;
-            } else {
-                $optional[$memberName] = $memberDef;
-            }
-        }
-
-        return [$required, $defaulted, $optional];
-    }
-
-    /**
-     * Get all members in constructor order as a flat array. Same ordering
-     * rules as {@see getMembersInConstructorOrder()} - historical order
-     * wins when a prior state exists, otherwise required / defaulted /
-     * optional. Iteration index matches the assigned `memberIndex`.
+     * Historical order wins when a prior state exists. Otherwise members
+     * use required, defaulted, then optional order. Iteration index matches
+     * the assigned `memberIndex`.
      */
     private function getMembersIndexed(string $shapeId): array
     {
@@ -590,12 +517,7 @@ final class StructureGenerator
             return;
         }
 
-        [
-            $requiredMembers,
-            $defaultedMembers,
-            $optionalMembers
-        ] = $this->getMembersInConstructorOrder($shapeId);
-        $allMembers = $requiredMembers + $defaultedMembers + $optionalMembers;
+        $allMembers = $this->getMembersIndexed($shapeId);
         $paginationTokenMember =
             $this->model->getPaginationInputTokenMember($shapeId);
         $paginationPageSizeMember =
@@ -649,12 +571,7 @@ final class StructureGenerator
         }
 
         // Collect PHPDoc lines
-        $paramDocs = $this->buildParamDocs(
-            $shapeId,
-            $requiredMembers,
-            $defaultedMembers,
-            $optionalMembers
-        );
+        $paramDocs = $this->buildParamDocs($shapeId, $allMembers);
         if (!empty($paramDocs)) {
             $writer->writeDocBlock($paramDocs);
         }
@@ -662,48 +579,24 @@ final class StructureGenerator
         $writer->writeLine('public function __construct(');
         $writer->pushIndent();
 
-        $modeFor = static function (string $name) use (
-            $requiredMembers,
-            $defaultedMembers
-        ): string
-        {
-            if (array_key_exists($name, $requiredMembers)) {
+        $modeFor = function (string $name) use ($shapeId): string {
+            if ($this->model->isMemberRequired($shapeId, $name)) {
                 return 'required';
             }
-            if (array_key_exists($name, $defaultedMembers)) {
+            if ($this->model->isMemberDefaulted($shapeId, $name)) {
                 return 'defaulted';
             }
             return 'optional';
         };
 
-        foreach ($requiredMembers as $memberName => $memberDef) {
+        foreach ($allMembers as $memberName => $memberDef) {
             $this->writeConstructorParam(
                 $writer,
                 $shapeId,
                 $memberName,
-                mode: 'required'
+                mode: $modeFor($memberName)
             );
         }
-
-        foreach ($defaultedMembers as $memberName => $memberDef) {
-            $this->writeConstructorParam(
-                $writer,
-                $shapeId,
-                $memberName,
-                mode: 'defaulted'
-            );
-        }
-
-        foreach ($optionalMembers as $memberName => $memberDef) {
-            $this->writeConstructorParam(
-                $writer,
-                $shapeId,
-                $memberName,
-                mode: 'optional'
-            );
-        }
-
-
 
         $writer->popIndent();
 
@@ -1561,7 +1454,9 @@ final class StructureGenerator
         }
         $visited[$targetId] = true;
 
-        $members = $this->model->getMembers($targetId);
+        $members = $targetType === 'structure'
+            ? $this->getMembersIndexed($targetId)
+            : $this->model->getMembers($targetId);
         if (empty($members)) {
             return '';
         }
@@ -2870,28 +2765,26 @@ final class StructureGenerator
      * non-null). Required and optional members are both nullable in the
      * generated constructor and render as nullable doc types.
      *
-     * @param array<string, array<string, mixed>> $requiredMembers
-     * @param array<string, array<string, mixed>> $defaultedMembers
-     * @param array<string, array<string, mixed>> $optionalMembers
+     * @param array<string, array<string, mixed>> $members
      * @return string[]
      */
     private function buildParamDocs(
         string $shapeId,
-        array $requiredMembers,
-        array $defaultedMembers,
-        array $optionalMembers
+        array $members
     ): array
     {
         $docs = [];
-        $allMembers = $requiredMembers + $defaultedMembers + $optionalMembers;
 
-        foreach ($allMembers as $memberName => $memberDef) {
+        foreach ($members as $memberName => $memberDef) {
             $phpType = $this->symbolProvider->toMemberType(
                 $shapeId,
                 $memberName
             );
             $propertyName = $this->symbolProvider->toPropertyName($memberName);
-            $isNonNullable = array_key_exists($memberName, $defaultedMembers);
+            $isNonNullable = $this->model->isMemberDefaulted(
+                $shapeId,
+                $memberName
+            );
 
             if ($phpType->docType !== null
                 && $phpType->docType !== $phpType->typeHint
