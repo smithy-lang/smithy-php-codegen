@@ -269,7 +269,7 @@ final class CodegenApplication
         string|true $value
     ): void
     {
-        if (\array_key_exists($name, $options)) {
+        if (isset($options[$name])) {
             throw new \InvalidArgumentException(
                 "Option --{$name} may only be provided once"
             );

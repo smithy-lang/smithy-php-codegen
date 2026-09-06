@@ -221,7 +221,7 @@ final class PhpSymbolProvider
         if ($targetType === 'blob') {
             $members = $this->model->getMembers($parentShapeId);
             $memberTraits = $members[$memberName]['traits'] ?? [];
-            if (array_key_exists('smithy.api#httpPayload', $memberTraits)) {
+            if (isset($memberTraits['smithy.api#httpPayload'])) {
                 return new PhpType(
                     'string|StreamInterface',
                     builtIn: false,

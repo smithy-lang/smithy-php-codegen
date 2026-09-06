@@ -110,10 +110,7 @@ final class StructureGenerator
         if ($isSerializable) {
             foreach ($this->model->getMembers($shapeId) as $memberDef) {
                 foreach ($httpTraitIds as $traitId) {
-                    if (array_key_exists(
-                        $traitId,
-                        $memberDef['traits'] ?? []
-                    )) {
+                    if (isset($memberDef['traits'][$traitId])) {
                         $hasHttpBindings = true;
                         break 2;
                     }
@@ -123,10 +120,7 @@ final class StructureGenerator
         if ($isDeserializable) {
             foreach ($this->model->getMembers($shapeId) as $memberDef) {
                 foreach ($httpResponseTraitIds as $traitId) {
-                    if (array_key_exists(
-                        $traitId,
-                        $memberDef['traits'] ?? []
-                    )) {
+                    if (isset($memberDef['traits'][$traitId])) {
                         $hasHttpResponseBindings = true;
                         break 2;
                     }
@@ -839,10 +833,10 @@ final class StructureGenerator
         $targetId = $members[$memberName]['target'] ?? null;
 
         $annotations = [];
-        if (array_key_exists('smithy.api#deprecated', $memberTraits)) {
+        if (isset($memberTraits['smithy.api#deprecated'])) {
             $annotations[] = '@deprecated';
         }
-        if (array_key_exists('smithy.api#sensitive', $memberTraits)
+        if (isset($memberTraits['smithy.api#sensitive'])
             || (
                 $targetId !== null
                 && $this->model->hasTrait($targetId, 'smithy.api#sensitive')
@@ -959,10 +953,10 @@ final class StructureGenerator
             && !$isInheritedExceptionProperty
         ) {
             $annotations = [];
-            if (array_key_exists('smithy.api#deprecated', $memberTraits)) {
+            if (isset($memberTraits['smithy.api#deprecated'])) {
                 $annotations[] = '@deprecated';
             }
-            if (array_key_exists('smithy.api#sensitive', $memberTraits)
+            if (isset($memberTraits['smithy.api#sensitive'])
                 || (
                     $targetId !== null
                     && $this->model->hasTrait($targetId, 'smithy.api#sensitive')
@@ -1123,8 +1117,8 @@ final class StructureGenerator
 
 
         foreach ($propagateList as $traitId) {
-            if (!array_key_exists($traitId, $traits)
-                && array_key_exists($traitId, $targetTraits)
+            if (!isset($traits[$traitId])
+                && isset($targetTraits[$traitId])
             ) {
                 $traits[$traitId] = $targetTraits[$traitId];
             }
@@ -1141,7 +1135,7 @@ final class StructureGenerator
         $serdeTraits = [];
 
         foreach ($this->traitIndexMap() as $traitId => $index) {
-            if (\array_key_exists($traitId, $memberTraits)) {
+            if (isset($memberTraits[$traitId])) {
                 $serdeTraits[$traitId] = $memberTraits[$traitId];
             }
         }
@@ -1622,10 +1616,7 @@ final class StructureGenerator
             $elemBody = [];
             foreach ($bodyMembers as $idx => [$memberName, $memberDef]) {
                 $memberTraits = $memberDef['traits'] ?? [];
-                if (array_key_exists(
-                    'smithy.api#xmlAttribute',
-                    $memberTraits
-                )) {
+                if (isset($memberTraits['smithy.api#xmlAttribute'])) {
                     $attrBody[$idx] = [$memberName, $memberDef];
                 } else {
                     $elemBody[$idx] = [$memberName, $memberDef];
@@ -1670,7 +1661,7 @@ final class StructureGenerator
         $index = 0;
         foreach ($members as $memberName => $memberDef) {
             $memberTraits = $memberDef['traits'] ?? [];
-            if (array_key_exists('smithy.api#xmlAttribute', $memberTraits)) {
+            if (isset($memberTraits['smithy.api#xmlAttribute'])) {
                 $attrMembers[$index] = [$memberName, $memberDef];
             } else {
                 $elemMembers[$index] = [$memberName, $memberDef];
@@ -1721,10 +1712,10 @@ final class StructureGenerator
         if (isset($memberTraits['smithy.api#httpQuery'])) {
             return ['query', $memberTraits['smithy.api#httpQuery']];
         }
-        if (array_key_exists('smithy.api#httpLabel', $memberTraits)) {
+        if (isset($memberTraits['smithy.api#httpLabel'])) {
             return ['label', null];
         }
-        if (array_key_exists('smithy.api#httpPayload', $memberTraits)) {
+        if (isset($memberTraits['smithy.api#httpPayload'])) {
             return ['payload', null];
         }
         if (isset($memberTraits['smithy.api#httpPrefixHeaders'])) {
@@ -1733,7 +1724,7 @@ final class StructureGenerator
                 $memberTraits['smithy.api#httpPrefixHeaders']
             ];
         }
-        if (array_key_exists('smithy.api#httpQueryParams', $memberTraits)) {
+        if (isset($memberTraits['smithy.api#httpQueryParams'])) {
             return ['queryParams', null];
         }
         return null;
@@ -2830,7 +2821,7 @@ final class StructureGenerator
         }
         foreach ($this->model->getMembers($shapeId) as $memberDef) {
             $memberTraits = $memberDef['traits'] ?? [];
-            if (\array_key_exists('smithy.api#sensitive', $memberTraits)) {
+            if (isset($memberTraits['smithy.api#sensitive'])) {
                 return true;
             }
             $targetId = $memberDef['target'] ?? null;

@@ -376,7 +376,7 @@ final class SmithyModel
         }
 
         $operationTraits = $operation['traits'] ?? [];
-        if (!\array_key_exists('smithy.api#paginated', $operationTraits)) {
+        if (!isset($operationTraits['smithy.api#paginated'])) {
             return null;
         }
 
@@ -969,7 +969,7 @@ final class SmithyModel
         }
 
         $memberTraits = $members[$memberName]['traits'] ?? [];
-        return array_key_exists('smithy.api#required', $memberTraits)
+        return isset($memberTraits['smithy.api#required'])
             && !array_key_exists('smithy.api#default', $memberTraits);
     }
 

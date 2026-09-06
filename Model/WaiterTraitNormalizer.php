@@ -52,7 +52,7 @@ final class WaiterTraitNormalizer
         }
 
         $traits = $operation['traits'] ?? [];
-        if (!\array_key_exists(self::TRAIT, $traits)) {
+        if (!isset($traits[self::TRAIT])) {
             return [];
         }
 
@@ -124,9 +124,7 @@ final class WaiterTraitNormalizer
         array $operation
     ): array
     {
-        $maxDelay = \array_key_exists('maxDelay', $definition)
-            ? $definition['maxDelay']
-            : self::DEFAULT_MAX_DELAY;
+        $maxDelay = $definition['maxDelay'] ?? self::DEFAULT_MAX_DELAY;
         if (!\is_int($maxDelay) || $maxDelay < 1) {
             self::invalid(
                 $operationShapeId,
@@ -135,9 +133,7 @@ final class WaiterTraitNormalizer
             );
         }
 
-        $minDelay = \array_key_exists('minDelay', $definition)
-            ? $definition['minDelay']
-            : self::DEFAULT_MIN_DELAY;
+        $minDelay = $definition['minDelay'] ?? self::DEFAULT_MIN_DELAY;
         if (!\is_int($minDelay)
             || $minDelay < 1
             || $minDelay > $maxDelay
@@ -150,9 +146,7 @@ final class WaiterTraitNormalizer
         }
 
         $documentation = $definition['documentation'] ?? null;
-        if (\array_key_exists('documentation', $definition)
-            && !\is_string($documentation)
-        ) {
+        if ($documentation !== null && !\is_string($documentation)) {
             self::invalid(
                 $operationShapeId,
                 $waiterName,
@@ -160,9 +154,7 @@ final class WaiterTraitNormalizer
             );
         }
 
-        $deprecated = \array_key_exists('deprecated', $definition)
-            ? $definition['deprecated']
-            : false;
+        $deprecated = $definition['deprecated'] ?? false;
         if (!\is_bool($deprecated)) {
             self::invalid(
                 $operationShapeId,
@@ -174,9 +166,7 @@ final class WaiterTraitNormalizer
         $tags = self::normalizeTags(
             $operationShapeId,
             $waiterName,
-            \array_key_exists('tags', $definition)
-                ? $definition['tags']
-                : []
+            $definition['tags'] ?? []
         );
 
         $acceptors = $definition['acceptors'] ?? null;
@@ -267,7 +257,7 @@ final class WaiterTraitNormalizer
         );
 
         $message = $acceptor['message'] ?? null;
-        if (\array_key_exists('message', $acceptor)
+        if ($message !== null
             && (!\is_string($message) || $message === '')
         ) {
             self::invalidAcceptor(

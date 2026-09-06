@@ -126,7 +126,7 @@ final class SchemasGenerator
             }
             // Skip mixins
             $traits = $shape['traits'] ?? [];
-            if (array_key_exists('smithy.api#mixin', $traits)) {
+            if (isset($traits['smithy.api#mixin'])) {
                 continue;
             }
             $structureShapes[$shapeId] = $shape;
@@ -514,7 +514,7 @@ final class SchemasGenerator
     {
         $serdeTraits = [];
         foreach ($this->traitIndexMap() as $traitId => $index) {
-            if (\array_key_exists($traitId, $memberTraits)) {
+            if (isset($memberTraits[$traitId])) {
                 $serdeTraits[$traitId] = $memberTraits[$traitId];
             }
         }
@@ -532,8 +532,8 @@ final class SchemasGenerator
         }
         $targetTraits = $targetShape['traits'] ?? [];
         foreach (self::PROPAGATE_TRAITS as $traitId) {
-            if (!array_key_exists($traitId, $traits)
-                && array_key_exists($traitId, $targetTraits)
+            if (!isset($traits[$traitId])
+                && isset($targetTraits[$traitId])
             ) {
                 $traits[$traitId] = $targetTraits[$traitId];
             }
@@ -595,7 +595,7 @@ final class SchemasGenerator
     {
         $parts = [];
         foreach ($preservedTraits as $traitId => $_) {
-            if (\array_key_exists($traitId, $traits)) {
+            if (isset($traits[$traitId])) {
                 $parts[] = PhpCodeWriter::exportLiteral($traitId)
                     . ' => '
                     . PhpCodeWriter::exportLiteral($traits[$traitId]);

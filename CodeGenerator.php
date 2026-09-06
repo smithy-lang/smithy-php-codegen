@@ -374,7 +374,7 @@ final class CodeGenerator
     {
         // Skip mixins
         $traits = $shape['traits'] ?? [];
-        if (array_key_exists('smithy.api#mixin', $traits)) {
+        if (isset($traits['smithy.api#mixin'])) {
             return false;
         }
 

@@ -746,8 +746,8 @@ final class CodegenSettings
         mixed $default
     ): mixed
     {
-        if (\array_key_exists($camelCase, $config)
-            && \array_key_exists($snakeCase, $config)
+        if (isset($config[$camelCase])
+            && isset($config[$snakeCase])
         ) {
             throw new \InvalidArgumentException(
                 "Use either {$camelCase} or {$snakeCase}, not both"

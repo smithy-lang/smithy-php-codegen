@@ -152,7 +152,7 @@ final class EnumGenerator
             if ($memberDoc !== null) {
                 $docLines[] = $this->cleanDocumentation((string) $memberDoc);
             }
-            if (array_key_exists('smithy.api#deprecated', $traits)) {
+            if (isset($traits['smithy.api#deprecated'])) {
                 if (!empty($docLines)) {
                     $docLines[] = '';
                 }
