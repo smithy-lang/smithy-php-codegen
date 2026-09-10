@@ -23,7 +23,6 @@ use Smithy\Core\Model\EffectiveAuthSchemes;
  */
 final class OperationGenerator
 {
-    private const RPC_V2_CBOR = 'smithy.protocols#rpcv2Cbor';
     private const DIRECT_OPERATION_TRAITS_BY_ID = [
         'smithy.rules#operationContextParams' => true,
         'smithy.rules#staticContextParams' => true,
@@ -194,6 +193,11 @@ final class OperationGenerator
 
         $writer->writeLine("public const NAME = '{$operationName}';");
         $writer->writeLine("public const ID = '{$shapeId}';");
+        $writer->writeLine(
+            $serviceId === null
+                ? 'public const SERVICE_ID = null;'
+                : "public const SERVICE_ID = '{$serviceId}';"
+        );
 
         if ($inputClass !== null) {
             $writer->writeLine(
@@ -244,17 +248,6 @@ final class OperationGenerator
         $requestTarget = isset($extraConstants['TARGET'])
             ? (string) $extraConstants['TARGET']
             : null;
-        if ($requestTarget === null
-            && $serviceId !== null
-            && \array_key_exists(
-                self::RPC_V2_CBOR,
-                $service['traits'] ?? []
-            )
-        ) {
-            $serviceName = SmithyModel::getShapeName($serviceId);
-            $requestTarget = "{$serviceName}.{$operationName}";
-            $writer->writeLine("public const TARGET = '{$requestTarget}';");
-        }
 
         foreach ($extraConstants as $constName => $constValue) {
             $escaped = \addcslashes((string) $constValue, "\\'");
@@ -284,6 +277,12 @@ final class OperationGenerator
         $writer->writeLine('public function getId(): string');
         $writer->openBlock('{');
         $writer->writeLine('return self::ID;');
+        $writer->closeBlock();
+        $writer->writeLine();
+
+        $writer->writeLine('public function getServiceId(): ?string');
+        $writer->openBlock('{');
+        $writer->writeLine('return self::SERVICE_ID;');
         $writer->closeBlock();
         $writer->writeLine();
 
@@ -702,7 +701,7 @@ final class OperationGenerator
         $lines = ['Schema::T_PAGINATED => ['];
         $fields = ['inputToken', 'outputToken', 'items', 'pageSize'];
         foreach ($fields as $field) {
-            if (!\array_key_exists($field, $paginatedTrait)) {
+            if (!isset($paginatedTrait[$field])) {
                 continue;
             }
 
