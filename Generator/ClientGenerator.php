@@ -240,13 +240,21 @@ final class ClientGenerator
                 . 'PluginCollection $plugins = new PluginCollection())'
             );
             $writer->openBlock('{');
-            foreach ($pluginClasses as $pluginClass) {
+            $writer->writeLine(
+                '$plugins = $plugins->merge(new PluginCollection('
+            );
+            $writer->pushIndent();
+            $lastPlugin = \count($pluginClasses) - 1;
+            foreach ($pluginClasses as $index => $pluginClass) {
                 $writer->writeLine(
-                    '$plugins = $plugins->add(new '
+                    'new '
                     . $this->shortName($pluginClass)
-                    . '());'
+                    . '()'
+                    . ($index === $lastPlugin ? '' : ',')
                 );
             }
+            $writer->popIndent();
+            $writer->writeLine('));');
             $writer->writeLine('parent::__construct($config, $plugins);');
             $writer->closeBlock();
             if ($operations !== []) {
