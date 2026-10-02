@@ -955,6 +955,33 @@ final class SmithyModel
     }
 
     /**
+     * Whether a member is optional from a client's perspective.
+     *
+     * Every top-level operation input member is client-optional. The
+     * `@clientOptional` trait extends the same behavior to non-input
+     * structures, regardless of `@required` or `@default`.
+     */
+    public function isMemberClientOptional(
+        string $shapeId,
+        string $memberName
+    ): bool
+    {
+        $members = $this->getMembers($shapeId);
+        if (!isset($members[$memberName])) {
+            return false;
+        }
+
+        $role = $this->operationRoles[$shapeId] ?? null;
+        $shapeTraits = $this->shapes[$shapeId]['traits'] ?? [];
+        $memberTraits = $members[$memberName]['traits'] ?? [];
+
+        return $role === 'input'
+            || $role === 'both'
+            || isset($shapeTraits['smithy.api#input'])
+            || isset($memberTraits['smithy.api#clientOptional']);
+    }
+
+    /**
      * Check if a member is required (has @required trait and no @default trait).
      *
      * @param string $shapeId Parent shape ID
@@ -964,7 +991,9 @@ final class SmithyModel
     public function isMemberRequired(string $shapeId, string $memberName): bool
     {
         $members = $this->getMembers($shapeId);
-        if (!isset($members[$memberName])) {
+        if (!isset($members[$memberName])
+            || $this->isMemberClientOptional($shapeId, $memberName)
+        ) {
             return false;
         }
 
@@ -993,8 +1022,8 @@ final class SmithyModel
     }
 
     /**
-     * Whether a member has a `@default` value that the codegen renders as a
-     * non-nullable PHP constructor parameter default.
+     * Whether a member has an effective `@default` value that codegen must
+     * materialize.
      *
      * The Smithy `@default` trait selector is restricted to simple types,
      * lists, and maps, so structure and union members can never appear here.
@@ -1002,12 +1031,12 @@ final class SmithyModel
      * generator emits a separate `public readonly MyEnum $name.` property
      * declaration and a constructor body that normalizes string/int input
      * via `MyEnum::fromValue()`, so the literal trait value can sit in the
-     * parameter slot just like any other scalar default.
+     * constructor body just like any other scalar default.
      *
-     * Members qualify when the trait is present, the value is not `null`
-     * (a `null` value clears any inherited default per the Smithy spec),
-     * and the value itself is one we can render as a PHP-constant
-     * expression - bool, int, float, string, or `[]`.
+     * Top-level operation input members and members with `@clientOptional`
+     * never qualify in client code. Otherwise, members qualify when the
+     * trait is present, the value is not `null` (which clears an inherited
+     * default), and the value is supported by the generator.
      *
      * @param string $shapeId Parent shape ID
      * @param string $memberName Member name
@@ -1016,7 +1045,9 @@ final class SmithyModel
     public function isMemberDefaulted(string $shapeId, string $memberName): bool
     {
         $members = $this->getMembers($shapeId);
-        if (!isset($members[$memberName])) {
+        if (!isset($members[$memberName])
+            || $this->isMemberClientOptional($shapeId, $memberName)
+        ) {
             return false;
         }
         $traits = $members[$memberName]['traits'] ?? [];

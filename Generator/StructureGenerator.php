@@ -284,9 +284,9 @@ final class StructureGenerator
         }
         $writer->writeLine();
 
-        // Generate the constructor. Pagination tokens, scalar enums, and
-        // inherited exception property names use explicit properties. other
-        // members use property promotion.
+        // Generate the constructor. Pagination tokens, scalar enums,
+        // effective defaults, and inherited exception names use explicit
+        // properties. Other members use property promotion.
         $this->writeConstructor(
             $writer,
             $shapeId,
@@ -449,10 +449,7 @@ final class StructureGenerator
     }
 
     /**
-     * Render a `@default` trait value as a PHP-constant expression suitable
-     * for a constructor parameter default or a `??` fallback. Caller is
-     * responsible for ensuring the member has been screened by
-     * {@see SmithyModel::isMemberDefaulted()} first.
+     * Render a Smithy node value as a PHP expression.
      */
     private function renderDefaultLiteral(mixed $value): string
     {
@@ -482,6 +479,122 @@ final class StructureGenerator
         throw new \LogicException(
             'Unsupported @default value: ' . var_export($value, true)
         );
+    }
+
+    /**
+     * Render an effective member default in its PHP runtime representation.
+     */
+    private function renderMemberDefaultExpression(
+        PhpCodeWriter $writer,
+        string $shapeId,
+        string $memberName
+    ): string
+    {
+        $targetId = $this->model->getMemberTarget($shapeId, $memberName);
+        $targetType = $targetId === null
+            ? null
+            : $this->model->getShapeType($targetId);
+        $value = $this->model->getMemberDefault($shapeId, $memberName);
+
+        return match ($targetType) {
+            'blob' => $this->renderBlobDefault($value),
+            'timestamp' => $this->renderTimestampDefault($value),
+            'float', 'double' => $this->renderFloatDefault($value),
+            'bigInteger' => 'new BigInteger('
+                . $this->renderDefaultLiteral((string) $value)
+                . ')',
+            'bigDecimal' => 'new BigDecimal('
+                . $this->renderDefaultLiteral((string) $value)
+                . ')',
+            'document' => $this->renderDocumentDefault($writer, $value),
+            default => $this->renderDefaultLiteral($value)
+        };
+    }
+
+    private function renderBlobDefault(mixed $value): string
+    {
+        if (!is_string($value)) {
+            throw new \LogicException('Blob @default must be base64 text.');
+        }
+
+        $decoded = \base64_decode($value, true);
+        if ($decoded === false) {
+            throw new \LogicException('Blob @default is not valid base64.');
+        }
+        if ($decoded === '') {
+            return "''";
+        }
+
+        $literal = '';
+        for ($i = 0, $length = \strlen($decoded); $i < $length; $i++) {
+            $literal .= \sprintf('\\x%02X', \ord($decoded[$i]));
+        }
+
+        return '"' . $literal . '"';
+    }
+
+    private function renderTimestampDefault(mixed $value): string
+    {
+        if (is_int($value) || is_float($value)) {
+            return $this->renderFloatDefault($value);
+        }
+        if (!is_string($value)) {
+            throw new \LogicException(
+                'Timestamp @default must be a number or date-time string.'
+            );
+        }
+
+        try {
+            $timestamp = new \DateTimeImmutable($value);
+        } catch (\Exception $exception) {
+            throw new \LogicException(
+                'Timestamp @default is not a valid date-time.',
+                previous: $exception
+            );
+        }
+
+        return $this->renderFloatDefault(
+            (float) $timestamp->format('U.u')
+        );
+    }
+
+    private function renderFloatDefault(mixed $value): string
+    {
+        if (is_string($value)) {
+            return match ($value) {
+                'NaN' => 'NAN',
+                'Infinity' => 'INF',
+                '-Infinity' => '-INF',
+                default => throw new \LogicException(
+                    'Floating-point @default must be numeric or special.'
+                )
+            };
+        }
+        if (!is_int($value) && !is_float($value)) {
+            throw new \LogicException(
+                'Floating-point @default must be numeric or special.'
+            );
+        }
+
+        $rendered = (string) (float) $value;
+        return str_contains($rendered, '.')
+            || str_contains(strtolower($rendered), 'e')
+                ? $rendered
+                : $rendered . '.0';
+    }
+
+    private function renderDocumentDefault(
+        PhpCodeWriter $writer,
+        mixed $value
+    ): string
+    {
+        $writer->addImport(
+            'Smithy\\Core\\Shape\\Document\\AbstractDocument'
+        );
+
+        return 'AbstractDocument::fromValue('
+            . $this->renderDefaultLiteral($value)
+            . ')';
     }
 
 
@@ -517,12 +630,12 @@ final class StructureGenerator
         $paginationPageSizeMember =
             $this->model->getPaginationPageSizeMember($shapeId);
 
-        // Scalar enum/intEnum members are declared separately above the
-        // constructor and assigned through a normalization line in the
-        // constructor body. Other members keep promoted-property shorthand.
+        // Scalar enum/intEnum and effective-default members are declared
+        // separately and assigned in the constructor body.
         $explicitlyDeclared = [];
         foreach ($allMembers as $memberName => $memberDef) {
             if ($this->isScalarEnumMember($shapeId, $memberName)
+                || $this->model->isMemberDefaulted($shapeId, $memberName)
                 || $memberName === $paginationTokenMember
                 || $memberName === $paginationPageSizeMember
                 || $this->isInheritedExceptionProperty(
@@ -553,8 +666,17 @@ final class StructureGenerator
                         $shapeId,
                         $memberName
                     );
-                } else {
+                } elseif ($this->isInheritedExceptionProperty(
+                    $shapeId,
+                    $memberName
+                )) {
                     $this->writeInheritedExceptionProperty(
+                        $writer,
+                        $shapeId,
+                        $memberName
+                    );
+                } else {
+                    $this->writeExplicitDefaultedProperty(
                         $writer,
                         $shapeId,
                         $memberName
@@ -642,9 +764,24 @@ final class StructureGenerator
                         $shapeId,
                         $memberName
                     );
-                    $writer->writeLine(
-                        "\$this->{$propertyName} = \${$parameterName};"
-                    );
+                    if ($this->model->isMemberDefaulted(
+                        $shapeId,
+                        $memberName
+                    )) {
+                        $default = $this->renderMemberDefaultExpression(
+                            $writer,
+                            $shapeId,
+                            $memberName
+                        );
+                        $writer->writeLine(
+                            "\$this->{$propertyName} = "
+                                . "\${$parameterName} ?? {$default};"
+                        );
+                    } else {
+                        $writer->writeLine(
+                            "\$this->{$propertyName} = \${$parameterName};"
+                        );
+                    }
                 }
             }
             $writer->popIndent();
@@ -713,6 +850,32 @@ final class StructureGenerator
 
         $writer->writeLine(
             "private readonly {$typeHint} \${$propertyName};"
+        );
+    }
+
+    /**
+     * Emit a non-nullable property whose default is materialized in the
+     * constructor body.
+     */
+    private function writeExplicitDefaultedProperty(
+        PhpCodeWriter $writer,
+        string $shapeId,
+        string $memberName
+    ): void
+    {
+        $phpType = $this->symbolProvider->toMemberType(
+            $shapeId,
+            $memberName
+        );
+        $propertyName = $this->symbolProvider->toPropertyName($memberName);
+
+        if ($phpType->requiresImport() && $phpType->fqcn !== null) {
+            $writer->addImport($phpType->fqcn);
+        }
+
+        $this->writeMemberAnnotations($writer, $shapeId, $memberName);
+        $writer->writeLine(
+            "public readonly {$phpType->typeHint} \${$propertyName};"
         );
     }
 
@@ -828,25 +991,7 @@ final class StructureGenerator
             $writer->addImport($phpType->fqcn);
         }
 
-        $members = $this->model->getMembers($shapeId);
-        $memberTraits = $members[$memberName]['traits'] ?? [];
-        $targetId = $members[$memberName]['target'] ?? null;
-
-        $annotations = [];
-        if (isset($memberTraits['smithy.api#deprecated'])) {
-            $annotations[] = '@deprecated';
-        }
-        if (isset($memberTraits['smithy.api#sensitive'])
-            || (
-                $targetId !== null
-                && $this->model->hasTrait($targetId, 'smithy.api#sensitive')
-            )
-        ) {
-            $annotations[] = '@sensitive';
-        }
-        if (!empty($annotations)) {
-            $writer->writeLine('/** ' . implode(' ', $annotations) . ' */');
-        }
+        $this->writeMemberAnnotations($writer, $shapeId, $memberName);
 
         // Defaulted enum members keep a non-nullable property (the constructor
         // body resolves the literal default via fromValue()). Required and
@@ -900,15 +1045,50 @@ final class StructureGenerator
             $writer->popIndent();
             $writer->writeLine('}');
         } else {
-            // Required and defaulted both deliver a non-null value.
+            $value = "\${$parameterName}";
+            if ($mode === 'defaulted') {
+                $default = $this->renderMemberDefaultExpression(
+                    $writer,
+                    $shapeId,
+                    $memberName
+                );
+                $value .= " ?? {$default}";
+            }
             $writer->writeLine(
                 "\$this->{$propertyName} = \${$parameterName} "
                 . "instanceof {$enumClass}"
                 . " ? \${$parameterName}"
-                . " : {$enumClass}::fromValue(\${$parameterName});"
+                . " : {$enumClass}::fromValue({$value});"
             );
         }
 
+    }
+
+    private function writeMemberAnnotations(
+        PhpCodeWriter $writer,
+        string $shapeId,
+        string $memberName
+    ): void
+    {
+        $members = $this->model->getMembers($shapeId);
+        $memberTraits = $members[$memberName]['traits'] ?? [];
+        $targetId = $members[$memberName]['target'] ?? null;
+        $annotations = [];
+
+        if (isset($memberTraits['smithy.api#deprecated'])) {
+            $annotations[] = '@deprecated';
+        }
+        if (isset($memberTraits['smithy.api#sensitive'])
+            || (
+                $targetId !== null
+                && $this->model->hasTrait($targetId, 'smithy.api#sensitive')
+            )
+        ) {
+            $annotations[] = '@sensitive';
+        }
+        if ($annotations !== []) {
+            $writer->writeLine('/** ' . implode(' ', $annotations) . ' */');
+        }
     }
 
 
@@ -929,11 +1109,6 @@ final class StructureGenerator
             $writer->addImport($phpType->fqcn);
         }
 
-        // Check for member-level @deprecated or @sensitive traits
-        $members = $this->model->getMembers($shapeId);
-        $memberTraits = $members[$memberName]['traits'] ?? [];
-        $targetId = $members[$memberName]['target'] ?? null;
-
         $isEnumMember = $this->isScalarEnumMember($shapeId, $memberName);
         $isPaginationToken = $memberName
             === $this->model->getPaginationInputTokenMember($shapeId);
@@ -943,76 +1118,39 @@ final class StructureGenerator
             $isPaginationToken || $isPaginationPageSize;
         $isInheritedExceptionProperty =
             $this->isInheritedExceptionProperty($shapeId, $memberName);
+        $isDefaulted = $mode === 'defaulted';
 
         // Annotations only attach to promoted-property declarations. Scalar
-        // enum, pagination, and inherited exception members declare the
-        // property separately above the constructor. the parameter line
-        // stays clean.
+        // enum, effective-default, pagination, and inherited exception
+        // members declare the property separately above the constructor.
         if (!$isEnumMember
+            && !$isDefaulted
             && !$isPaginationMember
             && !$isInheritedExceptionProperty
         ) {
-            $annotations = [];
-            if (isset($memberTraits['smithy.api#deprecated'])) {
-                $annotations[] = '@deprecated';
-            }
-            if (isset($memberTraits['smithy.api#sensitive'])
-                || (
-                    $targetId !== null
-                    && $this->model->hasTrait($targetId, 'smithy.api#sensitive')
-                )
-            ) {
-                $annotations[] = '@sensitive';
-            }
-            if (!empty($annotations)) {
-                $writer->writeLine('/** ' . implode(' ', $annotations) . ' */');
-            }
+            $this->writeMemberAnnotations($writer, $shapeId, $memberName);
         }
 
-        $isRequired = $mode === 'required';
-        $isDefaulted = $mode === 'defaulted';
-
         if ($isEnumMember) {
-            // `MyEnum|string` for enum, `MyEnum|int` for intEnum. Defaulted
-            // members render with the literal default. Required and optional
-            // members both add `|null` and default to null. Promoted-property
-            // modifier is dropped because the property declaration lives
-            // above the constructor. PHP disallows a parameter from also
-            // re-declaring a property.
+            // `MyEnum|string|null` for enum and `MyEnum|int|null` for
+            // intEnum. The nullable slot distinguishes an omitted value;
+            // effective defaults are materialized in the constructor body.
             $wireType = $this->enumWireType($shapeId, $memberName);
-            if ($isDefaulted) {
-                $typeHint = "{$phpType->typeHint}|{$wireType}";
-                $literal = $this->renderDefaultLiteral(
-                    $this->model->getMemberDefault($shapeId, $memberName)
-                );
-                $default = " = {$literal}";
-            } else {
-                $typeHint = "{$phpType->typeHint}|{$wireType}|null";
-                $default = ' = null';
-            }
-            $writer->writeLine("{$typeHint} \${$propertyName}{$default},");
+            $typeHint = "{$phpType->typeHint}|{$wireType}|null";
+            $writer->writeLine(
+                "{$typeHint} \${$propertyName} = null,"
+            );
             return;
         }
 
-        // Non-enum members use their normal type and default. Pagination
-        // members omit promotion but stay in the same constructor slot.
-        if ($isDefaulted) {
-            $typeHint = $phpType->typeHint;
-            $literal = $this->renderDefaultLiteral(
-                $this->model->getMemberDefault($shapeId, $memberName)
-            );
-            $default = " = {$literal}";
-        } else {
-            $typeHint = $phpType->nullable();
-            $default = ' = null';
-        }
-
+        $typeHint = $phpType->nullable();
         $promotion = $isPaginationMember
             || $isInheritedExceptionProperty
+            || $isDefaulted
                 ? ''
                 : 'public readonly ';
         $writer->writeLine(
-            "{$promotion}{$typeHint} \${$propertyName}{$default},"
+            "{$promotion}{$typeHint} \${$propertyName} = null,"
         );
     }
 
@@ -2751,10 +2889,9 @@ final class StructureGenerator
     }
 
     /**
-     * Build PHPDoc `@param` lines for the constructor. Defaulted members
-     * carry the non-nullable type (their literal default keeps the property
-     * non-null). Required and optional members are both nullable in the
-     * generated constructor and render as nullable doc types.
+     * Build PHPDoc `@param` lines for the constructor. Every constructor
+     * slot is nullable so `null` can represent omission; effective-default
+     * properties are materialized as non-null values in the body.
      *
      * @param array<string, array<string, mixed>> $members
      * @return string[]
@@ -2772,17 +2909,10 @@ final class StructureGenerator
                 $memberName
             );
             $propertyName = $this->symbolProvider->toPropertyName($memberName);
-            $isNonNullable = $this->model->isMemberDefaulted(
-                $shapeId,
-                $memberName
-            );
-
             if ($phpType->docType !== null
                 && $phpType->docType !== $phpType->typeHint
             ) {
-                $docType = $isNonNullable
-                    ? $phpType->docType
-                    : $phpType->nullableDocType();
+                $docType = $phpType->nullableDocType();
                 $paramLine = "@param {$docType} \${$propertyName}";
                 array_push($docs, ...$this->wrapParamLine($paramLine));
             }
@@ -2794,9 +2924,7 @@ final class StructureGenerator
                 if ($phpType->docType === null
                     || $phpType->docType === $phpType->typeHint
                 ) {
-                    $docType = $isNonNullable
-                        ? $phpType->typeHint
-                        : $phpType->nullable();
+                    $docType = $phpType->nullable();
                     $paramLine = "@param {$docType} \${$propertyName} "
                         . $cleanDoc;
                     array_push($docs, ...$this->wrapParamLine($paramLine));
