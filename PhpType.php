@@ -59,8 +59,30 @@ final class PhpType
     public function nullableDocType(): string
     {
         $type = $this->docType ?? $this->typeHint;
-        return str_contains($type, '|null') || str_ends_with($type, 'null')
+        return self::hasTopLevelNull($type)
             ? $type
             : $type . '|null';
+    }
+
+    private static function hasTopLevelNull(string $type): bool
+    {
+        $depth = 0;
+        $start = 0;
+        $length = \strlen($type);
+
+        for ($i = 0; $i < $length; $i++) {
+            if ($type[$i] === '<') {
+                $depth++;
+            } elseif ($type[$i] === '>') {
+                $depth--;
+            } elseif ($type[$i] === '|' && $depth === 0) {
+                if (\trim(\substr($type, $start, $i - $start)) === 'null') {
+                    return true;
+                }
+                $start = $i + 1;
+            }
+        }
+
+        return \trim(\substr($type, $start)) === 'null';
     }
 }

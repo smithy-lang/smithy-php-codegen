@@ -204,6 +204,10 @@ final class TypeRegistryGenerator
             if ($shape === null) {
                 continue;
             }
+            if (isset(($shape['traits'] ?? [])['smithy.api#mixin'])) {
+                continue;
+            }
+
             $type = $shape['type'] ?? '';
             if (!\in_array(
                 $type,

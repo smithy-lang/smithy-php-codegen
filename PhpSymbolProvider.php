@@ -322,7 +322,14 @@ final class PhpSymbolProvider
         $docType = 'array';
         if ($memberTarget !== null) {
             $memberType = $this->toPhpType($memberTarget);
-            $docType = "list<{$memberType->typeHint}>";
+            $elementType = $this->toCollectionDocType($memberType);
+            if ($this->model->hasTrait(
+                $shapeId,
+                'smithy.api#sparse'
+            )) {
+                $elementType .= '|null';
+            }
+            $docType = "list<{$elementType}>";
         }
 
         return new PhpType('array', builtIn: true, docType: $docType);
@@ -338,10 +345,29 @@ final class PhpSymbolProvider
         if ($keyTarget !== null && $valueTarget !== null) {
             $keyType = $this->toPhpType($keyTarget);
             $valueType = $this->toPhpType($valueTarget);
-            $docType = "array<{$keyType->typeHint}, {$valueType->typeHint}>";
+            $keyDocType = $this->toCollectionDocType($keyType);
+            $valueDocType = $this->toCollectionDocType($valueType);
+            if ($this->model->hasTrait(
+                $shapeId,
+                'smithy.api#sparse'
+            )) {
+                $valueDocType .= '|null';
+            }
+            $docType = "array<{$keyDocType}, {$valueDocType}>";
         }
 
         return new PhpType('array', builtIn: true, docType: $docType);
+    }
+
+    private function toCollectionDocType(PhpType $type): string
+    {
+        if ($type->docType !== null) {
+            return $type->docType;
+        }
+
+        return $type->fqcn === null
+            ? $type->typeHint
+            : '\\' . $type->fqcn;
     }
 
     private function resolveStructureType(string $shapeId): PhpType
