@@ -586,7 +586,7 @@ final class OperationGenerator
      * @param string|null $inputTarget Input shape ID for resolving members.
      * @param array<string, array{class: string, shapeId: string}> $errorMap
      *        Error discriminator metadata.
-     * @param array<int, mixed> $configuredTraits
+     * @param array<int|string, mixed> $configuredTraits
      * @param array<string, mixed> $directTraitsById
      */
     private function writeOperationSchemaMethod(
@@ -648,7 +648,12 @@ final class OperationGenerator
                 . \implode(', ', $encodings)
                 . '],';
         }
+        $configuredTraitsById = [];
         foreach ($configuredTraits as $index => $value) {
+            if (\is_string($index)) {
+                $configuredTraitsById[$index] = $value;
+                $index = $this->settings->schemaTraitIndices[$index];
+            }
             $traitParts[] = $index
                 . ' => '
                 . $this->exportLiteral($value)
@@ -665,6 +670,20 @@ final class OperationGenerator
                 foreach (\explode("\n", $entry) as $line) {
                     $writer->writeLine($line);
                 }
+            }
+            $writer->popIndent();
+            $writer->writeLine('],');
+        }
+        if ($configuredTraitsById !== []) {
+            $writer->writeLine('traitsById: [');
+            $writer->pushIndent();
+            foreach ($configuredTraitsById as $traitId => $value) {
+                $writer->writeLine(
+                    $this->exportLiteral($traitId)
+                        . ' => '
+                        . $this->exportLiteral($value)
+                        . ','
+                );
             }
             $writer->popIndent();
             $writer->writeLine('],');

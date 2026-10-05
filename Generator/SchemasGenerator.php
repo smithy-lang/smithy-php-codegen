@@ -219,43 +219,17 @@ final class SchemasGenerator
 
         $members = $this->getMembersIndexed($shapeId);
 
-        // Build shape-level traits (xmlName, xmlNamespace)
-        $shape = $this->model->getShape($shapeId);
-        $shapeTraits = $shape['traits'] ?? [];
-        $rootTraits = [];
-        foreach ([
+        $rootTraits = $this->buildRootTraits(
+            $shapeId,
+            [
                 'smithy.api#xmlName',
                 'smithy.api#xmlNamespace',
                 'smithy.api#error',
                 'smithy.api#retryable'
-            ] as $traitId
-        ) {
-            if (isset($shapeTraits[$traitId])) {
-                $rootTraits[$traitId] = $shapeTraits[$traitId];
-            }
-        }
-        // Inherit from mixins if not already set
-        if (!empty($shape['mixins'])) {
-            foreach ($shape['mixins'] as $mixin) {
-                $mixinId = $mixin['target'] ?? null;
-                if ($mixinId === null) continue;
-                $mixinTraits = $this->model->getShape($mixinId)['traits'] ?? [];
-                foreach ([
-                        'smithy.api#xmlName',
-                        'smithy.api#xmlNamespace',
-                        'smithy.api#error',
-                        'smithy.api#retryable'
-                    ] as $traitId
-                ) {
-                    if (!isset($rootTraits[$traitId])
-                        && isset($mixinTraits[$traitId])
-                    ) {
-                        $rootTraits[$traitId] = $mixinTraits[$traitId];
-                    }
-                }
-            }
-        }
+            ]
+        );
         $rootTraitsStr = $this->renderTraitsArray($rootTraits);
+        $rootTraitsByIdStr = $this->renderTraitsById($rootTraits);
 
         $writer->writeLine("public static function {$methodName}(): Schema");
         $writer->openBlock('{');
@@ -293,7 +267,9 @@ final class SchemasGenerator
         }
 
         $writer->popIndent();
-        $writer->writeLine("]{$rootTraitsStr},");
+        $writer->writeLine(
+            "]{$rootTraitsStr}{$rootTraitsByIdStr},"
+        );
         $writer->writeLine("targetClass: \\{$rootTargetFqcn}::class,");
         $writer->popIndent();
         $writer->writeLine(');');
@@ -324,6 +300,9 @@ final class SchemasGenerator
         // required-then-optional bucketing structs use. every variant is
         // exclusive so bucketing has no meaning here.
         $members = $this->model->getMembers($shapeId);
+        $rootTraits = $this->buildRootTraits($shapeId, []);
+        $rootTraitsStr = $this->renderTraitsArray($rootTraits);
+        $rootTraitsByIdStr = $this->renderTraitsById($rootTraits);
 
         $writer->writeLine("public static function {$methodName}(): Schema");
         $writer->openBlock('{');
@@ -354,7 +333,9 @@ final class SchemasGenerator
         }
 
         $writer->popIndent();
-        $writer->writeLine('],');
+        $writer->writeLine(
+            "]{$rootTraitsStr}{$rootTraitsByIdStr},"
+        );
         $writer->writeLine("targetClass: \\{$rootTargetFqcn}::class,");
         $writer->popIndent();
         $writer->writeLine(');');
@@ -384,16 +365,12 @@ final class SchemasGenerator
             ? 'ShapeType::IntEnum'
             : 'ShapeType::Enum';
 
-        // Shape-level traits worth carrying on the root schema.
-        $shapeTraits = $shape['traits'] ?? [];
-        $rootTraits = [];
-        $xmlTraits = ['smithy.api#xmlName', 'smithy.api#xmlNamespace'];
-        foreach ($xmlTraits as $traitId) {
-            if (isset($shapeTraits[$traitId])) {
-                $rootTraits[$traitId] = $shapeTraits[$traitId];
-            }
-        }
+        $rootTraits = $this->buildRootTraits(
+            $shapeId,
+            ['smithy.api#xmlName', 'smithy.api#xmlNamespace']
+        );
         $rootTraitsStr = $this->renderTraitsArray($rootTraits);
+        $rootTraitsByIdStr = $this->renderTraitsById($rootTraits);
 
         $rootTargetFqcn = $this->symbolProvider->toClassName($shapeId);
 
@@ -409,7 +386,9 @@ final class SchemasGenerator
         $writer->writeLine("return self::\${$className} = new Schema(");
         $writer->pushIndent();
         $writer->writeLine("id: '{$shapeId}',");
-        $writer->writeLine("type: {$typeEnum}{$rootTraitsStr},");
+        $writer->writeLine(
+            "type: {$typeEnum}{$rootTraitsStr}{$rootTraitsByIdStr},"
+        );
         $writer->writeLine("targetClass: \\{$rootTargetFqcn}::class,");
         $writer->popIndent();
         $writer->writeLine(');');
@@ -435,6 +414,7 @@ final class SchemasGenerator
         $traits = $this->buildMemberTraits($memberTraits);
         $this->propagateTargetTraits($targetId, $traits);
         $traitsStr = $this->renderTraitsArray($traits);
+        $traitsByIdStr = $this->renderTraitsById($traits);
         $directTraitsByIdStr = $this->renderDirectTraitsById(
             $memberTraits,
             self::DIRECT_MEMBER_TRAITS_BY_ID
@@ -465,7 +445,7 @@ final class SchemasGenerator
             . "memberName: '{$memberName}', "
             . "memberIndex: {$index}"
             . "{$unionMembers}{$collectionParams}{$traitsStr}"
-            . "{$directTraitsByIdStr}{$targetClassStr})";
+            . "{$traitsByIdStr}{$directTraitsByIdStr}{$targetClassStr})";
     }
 
     /**
@@ -514,7 +494,7 @@ final class SchemasGenerator
     {
         $serdeTraits = [];
         foreach ($this->traitIndexMap() as $traitId => $index) {
-            if (isset($memberTraits[$traitId])) {
+            if (\array_key_exists($traitId, $memberTraits)) {
                 $serdeTraits[$traitId] = $memberTraits[$traitId];
             }
         }
@@ -530,10 +510,20 @@ final class SchemasGenerator
         if ($targetShape === null) {
             return;
         }
-        $targetTraits = $targetShape['traits'] ?? [];
-        foreach (self::PROPAGATE_TRAITS as $traitId) {
-            if (!isset($traits[$traitId])
-                && isset($targetTraits[$traitId])
+        $targetTraits = $this->buildRootTraits(
+            $targetId,
+            self::PROPAGATE_TRAITS
+        );
+        $propagatedTraits = \array_fill_keys(
+            self::PROPAGATE_TRAITS,
+            true
+        ) + \array_diff_key(
+            $this->configuredTraitIds(),
+            self::TRAIT_INDEX_MAP
+        );
+        foreach ($propagatedTraits as $traitId => $_) {
+            if (!\array_key_exists($traitId, $traits)
+                && \array_key_exists($traitId, $targetTraits)
             ) {
                 $traits[$traitId] = $targetTraits[$traitId];
             }
@@ -572,16 +562,33 @@ final class SchemasGenerator
             if (!array_key_exists($i, $indexed)) {
                 $parts[] = 'null';
             } else {
-                $value = $indexed[$i];
-                if ($value === [] || $value === (object)[] || $value === null) {
-                    $parts[] = 'true';
-                } else {
-                    $parts[] = PhpCodeWriter::exportLiteral($value);
-                }
+                $parts[] = $this->exportTraitLiteral($indexed[$i]);
             }
         }
 
         return ', traits: [' . implode(', ', $parts) . ']';
+    }
+
+    /**
+     * Render configured traits keyed by their shape IDs.
+     *
+     * @param array<string, mixed> $traits
+     */
+    private function renderTraitsById(array $traits): string
+    {
+        $parts = [];
+        foreach ($this->configuredTraitIds() as $traitId => $_) {
+            if (!\array_key_exists($traitId, $traits)) {
+                continue;
+            }
+            $parts[] = PhpCodeWriter::exportLiteral($traitId)
+                . ' => '
+                . $this->exportTraitLiteral($traits[$traitId]);
+        }
+
+        return $parts === []
+            ? ''
+            : ', traitsById: [' . \implode(', ', $parts) . ']';
     }
 
     /**
@@ -594,17 +601,112 @@ final class SchemasGenerator
     ): string
     {
         $parts = [];
+        $configuredTraits = $this->configuredTraitIds();
+        $preservedTraits += $configuredTraits;
         foreach ($preservedTraits as $traitId => $_) {
-            if (isset($traits[$traitId])) {
-                $parts[] = PhpCodeWriter::exportLiteral($traitId)
-                    . ' => '
-                    . PhpCodeWriter::exportLiteral($traits[$traitId]);
+            if (!\array_key_exists($traitId, $traits)) {
+                continue;
             }
+            $value = isset($configuredTraits[$traitId])
+                ? $this->exportTraitLiteral($traits[$traitId])
+                : PhpCodeWriter::exportLiteral($traits[$traitId]);
+            $parts[] = PhpCodeWriter::exportLiteral($traitId)
+                . ' => '
+                . $value;
         }
 
         return $parts === []
             ? ''
             : ', directTraitsById: [' . \implode(', ', $parts) . ']';
+    }
+
+    /**
+     * Render a value using the same marker-trait normalization as the dense
+     * trait table.
+     */
+    private function exportTraitLiteral(mixed $value): string
+    {
+        if ($value === [] || $value === (object)[] || $value === null) {
+            return 'true';
+        }
+
+        return PhpCodeWriter::exportLiteral($value);
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function configuredTraitIds(): array
+    {
+        return \array_fill_keys(
+            \array_keys($this->settings->schemaTraitIndices),
+            true
+        );
+    }
+
+    /**
+     * Build the root traits retained by generated schemas.
+     *
+     * @param list<string> $builtInTraitIds
+     * @param array<string, true> $visited
+     * @return array<string, mixed>
+     */
+    private function buildRootTraits(
+        string $shapeId,
+        array $builtInTraitIds,
+        array $visited = []
+    ): array
+    {
+        if (isset($visited[$shapeId])) {
+            return [];
+        }
+        $visited[$shapeId] = true;
+
+        $shape = $this->model->getShape($shapeId) ?? [];
+        $preservedTraits = \array_fill_keys($builtInTraitIds, true)
+            + $this->configuredTraitIds();
+        $rootTraits = [];
+
+        foreach ($shape['mixins'] ?? [] as $mixin) {
+            $mixinId = \is_array($mixin)
+                ? $mixin['target'] ?? null
+                : null;
+            if (!\is_string($mixinId)) {
+                continue;
+            }
+            $mixinShape = $this->model->getShape($mixinId) ?? [];
+            $mixinTraits = $this->buildRootTraits(
+                $mixinId,
+                $builtInTraitIds,
+                $visited
+            );
+            unset($mixinTraits['smithy.api#mixin']);
+            $mixinTrait = $mixinShape['traits']['smithy.api#mixin'] ?? null;
+            $localTraits = \is_array($mixinTrait)
+                ? $mixinTrait['localTraits'] ?? []
+                : [];
+            if (\is_array($localTraits)) {
+                foreach ($localTraits as $traitId) {
+                    if (\is_string($traitId)) {
+                        unset($mixinTraits[$traitId]);
+                    }
+                }
+            }
+            foreach ($preservedTraits as $traitId => $_) {
+                if (\array_key_exists($traitId, $mixinTraits)) {
+                    $rootTraits[$traitId] = $mixinTraits[$traitId];
+                }
+            }
+        }
+
+        $shapeTraits = $shape['traits'] ?? [];
+        foreach ($preservedTraits as $traitId => $_) {
+            if (\array_key_exists($traitId, $shapeTraits)) {
+                $rootTraits[$traitId] = $shapeTraits[$traitId];
+            }
+        }
+
+        return $rootTraits;
     }
 
     /**
@@ -644,7 +746,14 @@ final class SchemasGenerator
             $memberTypeEnum = $this->smithyTypeToEnum($memberType);
             $memberTraits = $targetShape['member']['traits'] ?? [];
             $listMemberTraits = $this->buildMemberTraits($memberTraits);
+            $this->propagateTargetTraits(
+                $memberTarget,
+                $listMemberTraits
+            );
             $listMemberTraitsStr = $this->renderTraitsArray($listMemberTraits);
+            $listMemberTraitsByIdStr = $this->renderTraitsById(
+                $listMemberTraits
+            );
             $listMemberDirectTraitsByIdStr = $this->renderDirectTraitsById(
                 $memberTraits,
                 self::DIRECT_MEMBER_TRAITS_BY_ID
@@ -665,9 +774,11 @@ final class SchemasGenerator
             );
 
             return ", listMember: new Schema(id: '{$memberTarget}', "
-                . "type: {$memberTypeEnum}"
+                . "type: {$memberTypeEnum}, memberName: 'member', "
+                . "memberIndex: 0"
                 . "{$memberMembers}{$memberCollectionParams}"
-                . "{$listMemberTraitsStr}{$listMemberDirectTraitsByIdStr}"
+                . "{$listMemberTraitsStr}{$listMemberTraitsByIdStr}"
+                . "{$listMemberDirectTraitsByIdStr}"
                 . "{$memberTargetClass})";
         }
 
@@ -683,15 +794,22 @@ final class SchemasGenerator
 
             $keyTraits = $targetShape['key']['traits'] ?? [];
             $valueTraits = $targetShape['value']['traits'] ?? [];
-            $keyTraitsStr = $this->renderTraitsArray(
-                $this->buildMemberTraits($keyTraits)
-            );
+            $builtKeyTraits = $this->buildMemberTraits($keyTraits);
+            $this->propagateTargetTraits($keyTarget, $builtKeyTraits);
+            $keyTraitsStr = $this->renderTraitsArray($builtKeyTraits);
+            $keyTraitsByIdStr = $this->renderTraitsById($builtKeyTraits);
             $keyDirectTraitsByIdStr = $this->renderDirectTraitsById(
                 $keyTraits,
                 self::DIRECT_MEMBER_TRAITS_BY_ID
             );
-            $valueTraitsStr = $this->renderTraitsArray(
-                $this->buildMemberTraits($valueTraits)
+            $builtValueTraits = $this->buildMemberTraits($valueTraits);
+            $this->propagateTargetTraits(
+                $valueTarget,
+                $builtValueTraits
+            );
+            $valueTraitsStr = $this->renderTraitsArray($builtValueTraits);
+            $valueTraitsByIdStr = $this->renderTraitsById(
+                $builtValueTraits
             );
             $valueDirectTraitsByIdStr = $this->renderDirectTraitsById(
                 $valueTraits,
@@ -713,12 +831,15 @@ final class SchemasGenerator
             );
 
             return ", mapKey: new Schema(id: '{$keyTarget}', "
-                . "type: {$keyTypeEnum}{$keyTraitsStr}"
-                . "{$keyDirectTraitsByIdStr}), "
+                . "type: {$keyTypeEnum}, memberName: 'key', memberIndex: 0"
+                . "{$keyTraitsStr}"
+                . "{$keyTraitsByIdStr}{$keyDirectTraitsByIdStr}), "
                 . "mapValue: new Schema(id: '{$valueTarget}', "
-                . "type: {$valueTypeEnum}"
+                . "type: {$valueTypeEnum}, memberName: 'value', "
+                . "memberIndex: 1"
                 . "{$valueMembers}{$valueCollectionParams}"
-                . "{$valueTraitsStr}{$valueDirectTraitsByIdStr}"
+                . "{$valueTraitsStr}{$valueTraitsByIdStr}"
+                . "{$valueDirectTraitsByIdStr}"
                 . "{$valueTargetClass})";
         }
 
@@ -759,10 +880,13 @@ final class SchemasGenerator
             $memTargetType =
                 $this->model->getShapeType($memTargetId) ?? 'string';
             $memTypeEnum = $this->smithyTypeToEnum($memTargetType);
-            $memTraits = $this->buildMemberTraits($memberDef['traits'] ?? []);
+            $directMemTraits = $memberDef['traits'] ?? [];
+            $memTraits = $this->buildMemberTraits($directMemTraits);
+            $this->propagateTargetTraits($memTargetId, $memTraits);
             $memTraitsStr = $this->renderTraitsArray($memTraits);
+            $memTraitsByIdStr = $this->renderTraitsById($memTraits);
             $memDirectTraitsByIdStr = $this->renderDirectTraitsById(
-                $memberDef['traits'] ?? [],
+                $directMemTraits,
                 self::DIRECT_MEMBER_TRAITS_BY_ID
             );
             $memCollectionParams = $this->buildCollectionParams(
@@ -779,7 +903,8 @@ final class SchemasGenerator
                 . "memberName: '{$memberName}', "
                 . "memberIndex: {$index}"
                 . "{$memCollectionParams}{$memTraitsStr}"
-                . "{$memDirectTraitsByIdStr}{$targetClassStr})";
+                . "{$memTraitsByIdStr}{$memDirectTraitsByIdStr}"
+                . "{$targetClassStr})";
             $index++;
         }
 

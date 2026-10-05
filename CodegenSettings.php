@@ -45,7 +45,7 @@ final class CodegenSettings
      * @param array<string, array<string, string>> $shapeConstants
      * @param array<string, list<string>> $errorDiscriminators
      * @param array<string, int> $schemaTraitIndices
-     * @param array<string, array<int, mixed>> $operationSchemaTraits
+     * @param array<string, array<int|string, mixed>> $operationSchemaTraits
      * @param array<string, string> $waiterResourceInitialisms
      */
     public function __construct(
@@ -633,9 +633,21 @@ final class CodegenSettings
                 );
             }
             foreach ($traits as $index => $value) {
-                if (!\is_int($index) || $index < 0) {
+                if (\is_int($index) && $index >= 0) {
+                    self::validateLiteralValue(
+                        $value,
+                        'operationSchemaTraits'
+                    );
+                    continue;
+                }
+                if (!\is_string($index)
+                    || $index === ''
+                    || !isset($this->schemaTraitIndices[$index])
+                ) {
                     throw new \InvalidArgumentException(
-                        'operationSchemaTraits must use integer indexes'
+                        'operationSchemaTraits must use non-negative integer '
+                            . 'indexes or trait IDs configured in '
+                            . 'schemaTraitIndices'
                     );
                 }
                 self::validateLiteralValue(
@@ -784,7 +796,7 @@ final class CodegenSettings
 
     /**
      * @param array<string, mixed> $traits
-     * @return array<string, array<int, mixed>>
+     * @return array<string, array<int|string, mixed>>
      */
     private static function normalizeOperationSchemaTraits(
         array $traits
@@ -797,14 +809,20 @@ final class CodegenSettings
                 continue;
             }
             foreach ($values as $index => $value) {
-                if (!\is_int($index)
-                    && (!\is_string($index) || !\ctype_digit($index))
-                ) {
+                if (\is_int($index)) {
+                    $normalized[$shapeId][$index] = $value;
+                    continue;
+                }
+                if (!\is_string($index) || $index === '') {
                     throw new \InvalidArgumentException(
-                        'operationSchemaTraits must use integer indexes'
+                        'operationSchemaTraits must use non-negative integer '
+                            . 'indexes or non-empty trait IDs'
                     );
                 }
-                $normalized[$shapeId][(int) $index] = $value;
+                $normalizedIndex = \ctype_digit($index)
+                    ? (int) $index
+                    : $index;
+                $normalized[$shapeId][$normalizedIndex] = $value;
             }
         }
 
