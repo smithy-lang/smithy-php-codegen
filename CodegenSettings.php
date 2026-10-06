@@ -14,6 +14,10 @@ final class CodegenSettings
     private const IDENTIFIER_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/D';
     private const CLASS_NAME_PATTERN =
         '/^\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$/D';
+    private const DEFAULT_CLIENT_BASE_CLASS =
+        'Smithy\\Client\\AbstractClient';
+    private const DEFAULT_CLIENT_CONFIG_CLASS =
+        'Smithy\\Client\\ClientConfig';
 
     private const ORGANIZATIONS = [
         'categorized',
@@ -28,6 +32,8 @@ final class CodegenSettings
         'shape'
     ];
 
+    public readonly string $clientConfigClass;
+
     /**
      * @param array{
      *     input: string,
@@ -41,12 +47,18 @@ final class CodegenSettings
      * @param array<string, RulesFunctionInterface> $rulesFunctions
      * @param array<string, int> $extendedOpcodes
      * @param array<string, array<string, string>> $operationConstants
+     * @param string $clientBaseClass Base class with an AbstractClient-
+     *     compatible constructor accepting the configured client config
+     *     class and PluginCollection.
      * @param array<string, string> $clientPluginsByOperationTrait
      * @param array<string, array<string, string>> $shapeConstants
      * @param array<string, list<string>> $errorDiscriminators
      * @param array<string, int> $schemaTraitIndices
      * @param array<string, array<int|string, mixed>> $operationSchemaTraits
      * @param array<string, string> $waiterResourceInitialisms
+     * @param string|null $clientConfigClass Base config type accepted by
+     *     the generated client constructor and extended by generated
+     *     service config classes.
      */
     public function __construct(
         public readonly string $namespace,
@@ -72,7 +84,7 @@ final class CodegenSettings
         public readonly bool $generateEndpointKeyBuilder = false,
         public readonly array $operationConstants = [],
         public readonly string $clientBaseClass =
-            'Smithy\\Client\\AbstractClient',
+            self::DEFAULT_CLIENT_BASE_CLASS,
         public readonly array $clientPluginsByOperationTrait = [
             'smithy.api#requestCompression' =>
                 'Smithy\\Client\\Plugin\\RequestCompressionPlugin',
@@ -86,9 +98,21 @@ final class CodegenSettings
         public readonly array $schemaTraitIndices = [],
         public readonly array $operationSchemaTraits = [],
         public readonly array $waiterResourceInitialisms = [],
-        public readonly bool $assumeAsciiEndpointStrings = false
+        public readonly bool $assumeAsciiEndpointStrings = false,
+        ?string $clientConfigClass = null
     ) {
+        $this->clientConfigClass = $clientConfigClass
+            ?? self::DEFAULT_CLIENT_CONFIG_CLASS;
         $this->validate();
+        if ($clientConfigClass === null
+            && \ltrim($this->clientBaseClass, '\\')
+                !== self::DEFAULT_CLIENT_BASE_CLASS
+        ) {
+            throw new \InvalidArgumentException(
+                'clientConfigClass must be set when clientBaseClass '
+                    . 'is customized'
+            );
+        }
     }
 
     /**
@@ -154,7 +178,7 @@ final class CodegenSettings
                 $config,
                 'clientBaseClass',
                 'client_base_class',
-                'Smithy\\Client\\AbstractClient'
+                self::DEFAULT_CLIENT_BASE_CLASS
             ),
             clientPluginsByOperationTrait: self::aliasedValue(
                 $config,
@@ -216,6 +240,12 @@ final class CodegenSettings
                 'assumeAsciiEndpointStrings',
                 'assume_ascii_endpoint_strings',
                 false
+            ),
+            clientConfigClass: self::aliasedValue(
+                $config,
+                'clientConfigClass',
+                'client_config_class',
+                null
             )
         );
     }
@@ -363,6 +393,10 @@ final class CodegenSettings
         self::requireClassName(
             $this->clientBaseClass,
             'clientBaseClass'
+        );
+        self::requireClassName(
+            $this->clientConfigClass,
+            'clientConfigClass'
         );
         $this->validateRulesFunctions();
         $this->validateExtendedOpcodes();
@@ -738,7 +772,9 @@ final class CodegenSettings
             'waiterResourceInitialisms',
             'waiter_resource_initialisms',
             'assumeAsciiEndpointStrings',
-            'assume_ascii_endpoint_strings'
+            'assume_ascii_endpoint_strings',
+            'clientConfigClass',
+            'client_config_class'
         ];
         $unknown = \array_diff(\array_keys($config), $known);
         if ($unknown !== []) {

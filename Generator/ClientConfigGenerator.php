@@ -13,8 +13,6 @@ use Smithy\Codegen\Writer\PhpCodeWriter;
  */
 final class ClientConfigGenerator
 {
-    private const CLIENT_CONFIG = 'Smithy\\Client\\ClientConfig';
-
     /**
      * @internal
      */
@@ -42,13 +40,16 @@ final class ClientConfigGenerator
 
         $shortName = $this->shortName($serviceShapeId);
         $className = $shortName . 'ClientConfig';
+        $configClass = '\\' . \ltrim(
+            $this->settings->clientConfigClass,
+            '\\'
+        );
         $writer = new PhpCodeWriter($this->settings->namespace);
-        $writer->addImport(self::CLIENT_CONFIG);
         $writer->writeDocBlock([
             "Configuration for {@see {$shortName}Client}."
         ]);
         $writer->writeLine(
-            "final class {$className} extends ClientConfig {}"
+            "final class {$className} extends {$configClass} {}"
         );
 
         return new GeneratedFile(

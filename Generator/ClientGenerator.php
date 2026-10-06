@@ -229,19 +229,29 @@ final class ClientGenerator
             }
         }
 
+        $configClass = '\\' . \ltrim(
+            $this->settings->clientConfigClass,
+            '\\'
+        );
+        $pluginCollectionClass = '\\' . self::PLUGIN_COLLECTION;
+        foreach ($pluginClasses as $pluginClass) {
+            $writer->addImport($pluginClass);
+        }
+        $writer->writeLine('public function __construct(');
+        $writer->pushIndent();
+        $writer->writeLine("{$configClass} \$config,");
+        $writer->writeLine(
+            "{$pluginCollectionClass} \$plugins = "
+                . "new {$pluginCollectionClass}()"
+        );
+        $writer->popIndent();
+        $writer->writeLine(')');
+        $writer->openBlock('{');
         if ($pluginClasses !== []) {
-            $configClassName = $shortName . 'ClientConfig';
-            $writer->addImport(self::PLUGIN_COLLECTION);
-            foreach ($pluginClasses as $pluginClass) {
-                $writer->addImport($pluginClass);
-            }
             $writer->writeLine(
-                "public function __construct({$configClassName} \$config, "
-                . 'PluginCollection $plugins = new PluginCollection())'
-            );
-            $writer->openBlock('{');
-            $writer->writeLine(
-                '$plugins = $plugins->merge(new PluginCollection('
+                '$plugins = $plugins->merge(new '
+                    . $pluginCollectionClass
+                    . '('
             );
             $writer->pushIndent();
             $lastPlugin = \count($pluginClasses) - 1;
@@ -255,11 +265,11 @@ final class ClientGenerator
             }
             $writer->popIndent();
             $writer->writeLine('));');
-            $writer->writeLine('parent::__construct($config, $plugins);');
-            $writer->closeBlock();
-            if ($operations !== []) {
-                $writer->writeLine();
-            }
+        }
+        $writer->writeLine('parent::__construct($config, $plugins);');
+        $writer->closeBlock();
+        if ($operations !== []) {
+            $writer->writeLine();
         }
 
         $first = true;
