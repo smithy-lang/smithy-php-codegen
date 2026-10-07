@@ -225,7 +225,8 @@ final class SchemasGenerator
                 'smithy.api#xmlName',
                 'smithy.api#xmlNamespace',
                 'smithy.api#error',
-                'smithy.api#retryable'
+                'smithy.api#retryable',
+                'smithy.api#sensitive'
             ]
         );
         $rootTraitsStr = $this->renderTraitsArray($rootTraits);
@@ -300,7 +301,10 @@ final class SchemasGenerator
         // required-then-optional bucketing structs use. every variant is
         // exclusive so bucketing has no meaning here.
         $members = $this->model->getMembers($shapeId);
-        $rootTraits = $this->buildRootTraits($shapeId, []);
+        $rootTraits = $this->buildRootTraits(
+            $shapeId,
+            ['smithy.api#sensitive']
+        );
         $rootTraitsStr = $this->renderTraitsArray($rootTraits);
         $rootTraitsByIdStr = $this->renderTraitsById($rootTraits);
 

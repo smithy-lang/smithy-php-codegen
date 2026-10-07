@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
+use Smithy\Codegen\Model\SensitiveShapeDetector;
 use Smithy\Codegen\Model\SmithyModel;
 use Smithy\Codegen\PhpSymbolProvider;
 use Smithy\Codegen\PriorCodegenEvaluator;
@@ -33,6 +34,8 @@ final class StructureGenerator
         'line' => 'modeledLine'
     ];
 
+    private readonly SensitiveShapeDetector $sensitiveShapeDetector;
+
     /**
      * @internal
      */
@@ -50,8 +53,13 @@ final class StructureGenerator
          * non-null, each shape's historical slot order wins and any
          * new-in-model members are appended at the tail.
          */
-        private readonly ?PriorCodegenEvaluator $priorCodegen = null
-    ) {}
+        private readonly ?PriorCodegenEvaluator $priorCodegen = null,
+        ?SensitiveShapeDetector $sensitiveShapeDetector = null
+    )
+    {
+        $this->sensitiveShapeDetector = $sensitiveShapeDetector
+            ?? new SensitiveShapeDetector($model);
+    }
 
     /**
      * Generate PHP class code for a structure shape.
@@ -158,16 +166,16 @@ final class StructureGenerator
             $writer->addImport('Smithy\\Core\\Shape\\ReadonlyArrayAccessTrait');
         }
 
-        // SensitiveStringableTrait provides a redaction-aware `__toString`.
-        // Emit on any shape that carries `@sensitive` at the shape level,
-        // or that has any member (directly or via target) marked
-        // `@sensitive`. Non-sensitive shapes skip the trait entirely to
-        // keep var_dump / print_r output free of the redaction wrapper.
+        // SensitiveStringableTrait provides redaction-aware string and debug
+        // output. Emit it when this shape can transitively contain sensitive
+        // data, including through unions and collections.
         $withSensitiveStringable = $this->shouldEmitSensitiveStringable(
             $shapeId
         );
         if ($withSensitiveStringable) {
-            $writer->addImport('Smithy\\Core\\Shape\\SensitiveStringableTrait');
+            $writer->addImport(
+                'Smithy\\Core\\Shape\\SensitiveStringableTrait'
+            );
         }
 
         // FromMembersTrait provides the `@internal` `fromMembers()` sink used
@@ -2937,29 +2945,10 @@ final class StructureGenerator
 
     /**
      * Whether `SensitiveStringableTrait` should be emitted for the shape.
-     * Returns true when the shape carries `@sensitive` at the shape level,
-     * or when any member (or the member's target shape) carries
-     * `@sensitive`. Skipped otherwise so non-sensitive shapes keep the
-     * default PHP object-to-string coercion.
      */
     private function shouldEmitSensitiveStringable(string $shapeId): bool
     {
-        if ($this->model->hasTrait($shapeId, 'smithy.api#sensitive')) {
-            return true;
-        }
-        foreach ($this->model->getMembers($shapeId) as $memberDef) {
-            $memberTraits = $memberDef['traits'] ?? [];
-            if (isset($memberTraits['smithy.api#sensitive'])) {
-                return true;
-            }
-            $targetId = $memberDef['target'] ?? null;
-            if ($targetId !== null
-                && $this->model->hasTrait($targetId, 'smithy.api#sensitive')
-            ) {
-                return true;
-            }
-        }
-        return false;
+        return $this->sensitiveShapeDetector->containsSensitiveData($shapeId);
     }
 
 }

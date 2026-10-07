@@ -16,6 +16,7 @@ use Smithy\Codegen\Generator\ServiceGenerator;
 use Smithy\Codegen\Generator\TypeRegistryGenerator;
 use Smithy\Codegen\Generator\StructureGenerator;
 use Smithy\Codegen\Generator\UnionGenerator;
+use Smithy\Codegen\Model\SensitiveShapeDetector;
 use Smithy\Codegen\Model\SmithyModel;
 
 /**
@@ -69,12 +70,14 @@ final class CodeGenerator
         $priorCodegen = $settings->preserveExistingMemberOrder
             ? PriorCodegenEvaluator::inspect($settings->outputDir)
             : null;
+        $sensitiveShapeDetector = new SensitiveShapeDetector($model);
 
         $this->structureGenerator = new StructureGenerator(
             $model,
             $this->symbolProvider,
             $settings,
-            $priorCodegen
+            $priorCodegen,
+            $sensitiveShapeDetector
         );
         $this->enumGenerator = new EnumGenerator(
             $model,
@@ -84,7 +87,8 @@ final class CodeGenerator
         $this->unionGenerator = new UnionGenerator(
             $model,
             $this->symbolProvider,
-            $settings
+            $settings,
+            $sensitiveShapeDetector
         );
         $this->operationGenerator = new OperationGenerator(
             $model,

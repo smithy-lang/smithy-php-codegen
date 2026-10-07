@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
+use Smithy\Codegen\Model\SensitiveShapeDetector;
 use Smithy\Codegen\Model\SmithyModel;
 use Smithy\Codegen\PhpSymbolProvider;
 use Smithy\Codegen\Writer\PhpCodeWriter;
@@ -37,14 +38,21 @@ final class UnionGenerator
         'value'
     ];
 
+    private readonly SensitiveShapeDetector $sensitiveShapeDetector;
+
     /**
      * @internal
      */
     public function __construct(
         private readonly SmithyModel $model,
         private readonly PhpSymbolProvider $symbolProvider,
-        private readonly CodegenSettings $settings
-    ) {}
+        private readonly CodegenSettings $settings,
+        ?SensitiveShapeDetector $sensitiveShapeDetector = null
+    )
+    {
+        $this->sensitiveShapeDetector = $sensitiveShapeDetector
+            ?? new SensitiveShapeDetector($model);
+    }
 
     /**
      * Generate PHP code for a union shape.
@@ -116,6 +124,13 @@ final class UnionGenerator
         $writer->addImport('Smithy\\Core\\Serde\\Schema');
         $writer->addImport('Smithy\\Core\\Serde\\ShapeSerializerInterface');
         $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
+        $withSensitiveStringable =
+            $this->sensitiveShapeDetector->containsSensitiveData($shapeId);
+        if ($withSensitiveStringable) {
+            $writer->addImport(
+                'Smithy\\Core\\Shape\\SensitiveStringableTrait'
+            );
+        }
 
         // Write doc comment
         $documentation = $this->model->getTrait(
@@ -137,6 +152,11 @@ final class UnionGenerator
             ['UnionInterface']
         );
         $writer->openBlock('{');
+
+        if ($withSensitiveStringable) {
+            $writer->writeLine('use SensitiveStringableTrait;');
+            $writer->writeLine();
+        }
 
         // Public shape-ID constant for typed lookups (logging, metrics,
         // type registries) that need the Smithy ID without a schema load.
@@ -294,6 +314,7 @@ final class UnionGenerator
         $variantClassName = $baseClassName . 'Unknown';
 
         $writer = new PhpCodeWriter($namespace);
+        $writer->addImport('Smithy\\Core\\Shape\\SensitiveStringableTrait');
 
         $writer->writeDocBlock(['Unknown variant for forward-compatibility.']);
         $writer->writeLine("/** @internal */");
@@ -301,6 +322,8 @@ final class UnionGenerator
             "final readonly class {$variantClassName} extends {$baseClassName}"
         );
         $writer->openBlock('{');
+        $writer->writeLine('use SensitiveStringableTrait;');
+        $writer->writeLine();
         $writer->writeLine(
             'public function __construct('
             . 'private string $unknownTag, '
