@@ -85,14 +85,34 @@ final class SmithyModel
     {
         $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
 
+        if (!\is_array($data) || \array_is_list($data)) {
+            throw new \RuntimeException(
+                'Invalid Smithy model: root must be an object'
+            );
+        }
+
         if (!isset($data['smithy'])) {
             throw new \RuntimeException(
                 'Invalid Smithy model: missing "smithy" version field'
             );
         }
 
+        if (!\is_string($data['smithy']) || $data['smithy'] === '') {
+            throw new \RuntimeException(
+                'Invalid Smithy model: "smithy" version must be a string'
+            );
+        }
+
+        SmithyModelValidator::validate($data);
+
         $shapes = $data['shapes'] ?? [];
         $metadata = $data['metadata'] ?? [];
+
+        if (!\is_array($metadata)) {
+            throw new \RuntimeException(
+                'Invalid Smithy model: "metadata" must be an object'
+            );
+        }
 
         return new self($shapes, $metadata);
     }

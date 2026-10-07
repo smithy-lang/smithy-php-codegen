@@ -533,6 +533,8 @@ final class CodeGenerator
     /**
      * Generate all shapes and write them to disk.
      *
+     * The configured output tree must not be modified concurrently.
+     *
      * @return int Number of files written
      */
     public function generateAndWrite(): int
@@ -540,7 +542,7 @@ final class CodeGenerator
         $files = $this->generate();
 
         foreach ($files as $file) {
-            $file->writeToDisk();
+            $file->writeToDisk($this->settings->outputDir);
         }
 
         return count($files);
