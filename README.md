@@ -75,6 +75,10 @@ The generator uses contracts from `smithy/client` and `smithy/core`. Generated
 clients also require the runtime packages referenced by their configured
 protocol and transport.
 
+## Design
+
+See [Code Generation Design](../../docs/design/codegen/smithy-php-code-generation.md).
+
 ## Contributing
 
 Run the component tests from the monorepo root:
