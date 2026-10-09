@@ -1314,10 +1314,7 @@ final class StructureGenerator
 
 
     /**
-     * Render a traits array as a packed (dense) PHP array.
-     *
-     * Emits sequential values from index 0 to max used index, with null for absent traits.
-     * This produces a PHP packed array (sequential int keys) for O(1) access with no hash table.
+     * Render populated dense-trait indexes without null padding.
      */
     private function renderTraitsArray(array $traits): string
     {
@@ -1325,38 +1322,29 @@ final class StructureGenerator
             return '';
         }
 
-        // Build a dense array indexed by trait constant values
-        $maxIndex = -1;
         $indexed = [];
         $traitIndexMap = $this->traitIndexMap();
         foreach ($traits as $traitId => $value) {
             $idx = $traitIndexMap[$traitId] ?? null;
             if ($idx === null) {
-                continue; // Skip unknown traits
+                continue;
             }
             $indexed[$idx] = $value;
-            if ($idx > $maxIndex) {
-                $maxIndex = $idx;
-            }
         }
 
-        if ($maxIndex < 0) {
+        if ($indexed === []) {
             return '';
         }
 
-        // Build packed array from 0 to maxIndex
+        \ksort($indexed);
         $parts = [];
-        for ($i = 0; $i <= $maxIndex; $i++) {
-            if (!array_key_exists($i, $indexed)) {
-                $parts[] = 'null';
+        foreach ($indexed as $index => $value) {
+            if ($value === [] || $value === (object)[] || $value === null) {
+                $literal = 'true';
             } else {
-                $value = $indexed[$i];
-                if ($value === [] || $value === (object)[] || $value === null) {
-                    $parts[] = 'true';
-                } else {
-                    $parts[] = PhpCodeWriter::exportLiteral($value);
-                }
+                $literal = PhpCodeWriter::exportLiteral($value);
             }
+            $parts[] = $index . ' => ' . $literal;
         }
 
         return ', traits: [' . implode(', ', $parts) . ']';

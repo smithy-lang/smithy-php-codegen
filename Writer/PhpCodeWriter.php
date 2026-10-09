@@ -49,13 +49,15 @@ final class PhpCodeWriter
             $fqcn = ltrim($fqcn, '\\');
         }
 
-        // Don't import classes in the same namespace
         $fqcnNamespace = $this->extractNamespace($fqcn);
-        if ($fqcnNamespace === $this->namespace) {
+        $fqcnShortName = $this->extractShortName($fqcn);
+        if ($fqcnNamespace === $this->namespace
+            && ($alias === null || $alias === $fqcnShortName)
+        ) {
             return;
         }
 
-        $shortName = $alias ?? $this->extractShortName($fqcn);
+        $shortName = $alias ?? $fqcnShortName;
         $this->imports[$fqcn] = $shortName;
     }
 

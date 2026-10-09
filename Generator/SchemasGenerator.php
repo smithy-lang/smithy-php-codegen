@@ -76,6 +76,17 @@ final class SchemasGenerator
         'smithy.api#sensitive'
     ];
 
+    private ?PhpCodeWriter $activeWriter = null;
+
+    /** @var array<string, string> Shape ID => rendered class reference */
+    private array $targetClassReferences = [];
+
+    /** @var array<string, string> Shape ID => target class FQCN */
+    private array $targetClassFqcns = [];
+
+    /** @var array<string, true> Imported target class FQCNs */
+    private array $importedTargetClasses = [];
+
     /**
      * @internal
      */
@@ -108,6 +119,7 @@ final class SchemasGenerator
         $writer = new PhpCodeWriter($namespace);
         $writer->addImport('Smithy\\Core\\Serde\\Schema');
         $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
+        $this->prepareTargetClassReferences($writer);
 
         $writer->writeDocBlock([
             'Centralized schema registry for all shapes in this service.',
@@ -245,7 +257,7 @@ final class SchemasGenerator
         // schema can carry `targetClass`. ArrayShapeSerializer reads this on
         // the root schema to instantiate the shape from an associative
         // array without the caller having to pass `static::class`.
-        $rootTargetFqcn = $this->symbolProvider->toClassName($shapeId);
+        $rootTargetClass = $this->targetClassReference($shapeId);
 
         // Build the structure schema with inline member schemas
         $writer->writeLine("return self::\${$className} = new Schema(");
@@ -271,7 +283,7 @@ final class SchemasGenerator
         $writer->writeLine(
             "]{$rootTraitsStr}{$rootTraitsByIdStr},"
         );
-        $writer->writeLine("targetClass: \\{$rootTargetFqcn}::class,");
+        $writer->writeLine("targetClass: {$rootTargetClass}::class,");
         $writer->popIndent();
         $writer->writeLine(');');
         $writer->closeBlock();
@@ -296,7 +308,7 @@ final class SchemasGenerator
     {
         $className = $this->symbolProvider->toShortClassName($shapeId);
         $methodName = lcfirst($className);
-        $rootTargetFqcn = $this->symbolProvider->toClassName($shapeId);
+        $rootTargetClass = $this->targetClassReference($shapeId);
         // Unions honor declaration order rather than the
         // required-then-optional bucketing structs use. every variant is
         // exclusive so bucketing has no meaning here.
@@ -340,7 +352,7 @@ final class SchemasGenerator
         $writer->writeLine(
             "]{$rootTraitsStr}{$rootTraitsByIdStr},"
         );
-        $writer->writeLine("targetClass: \\{$rootTargetFqcn}::class,");
+        $writer->writeLine("targetClass: {$rootTargetClass}::class,");
         $writer->popIndent();
         $writer->writeLine(');');
         $writer->closeBlock();
@@ -376,7 +388,7 @@ final class SchemasGenerator
         $rootTraitsStr = $this->renderTraitsArray($rootTraits);
         $rootTraitsByIdStr = $this->renderTraitsById($rootTraits);
 
-        $rootTargetFqcn = $this->symbolProvider->toClassName($shapeId);
+        $rootTargetClass = $this->targetClassReference($shapeId);
 
         $writer->writeLine("public static function {$methodName}(): Schema");
         $writer->openBlock('{');
@@ -393,7 +405,7 @@ final class SchemasGenerator
         $writer->writeLine(
             "type: {$typeEnum}{$rootTraitsStr}{$rootTraitsByIdStr},"
         );
-        $writer->writeLine("targetClass: \\{$rootTargetFqcn}::class,");
+        $writer->writeLine("targetClass: {$rootTargetClass}::class,");
         $writer->popIndent();
         $writer->writeLine(');');
         $writer->closeBlock();
@@ -535,7 +547,7 @@ final class SchemasGenerator
     }
 
     /**
-     * Render a traits array as a packed (dense) PHP array.
+     * Render populated dense-trait indexes without null padding.
      */
     private function renderTraitsArray(array $traits): string
     {
@@ -543,7 +555,6 @@ final class SchemasGenerator
             return '';
         }
 
-        $maxIndex = -1;
         $indexed = [];
         $traitIndexMap = $this->traitIndexMap();
         foreach ($traits as $traitId => $value) {
@@ -552,22 +563,16 @@ final class SchemasGenerator
                 continue;
             }
             $indexed[$idx] = $value;
-            if ($idx > $maxIndex) {
-                $maxIndex = $idx;
-            }
         }
 
-        if ($maxIndex < 0) {
+        if ($indexed === []) {
             return '';
         }
 
+        \ksort($indexed);
         $parts = [];
-        for ($i = 0; $i <= $maxIndex; $i++) {
-            if (!array_key_exists($i, $indexed)) {
-                $parts[] = 'null';
-            } else {
-                $parts[] = $this->exportTraitLiteral($indexed[$i]);
-            }
+        foreach ($indexed as $index => $value) {
+            $parts[] = $index . ' => ' . $this->exportTraitLiteral($value);
         }
 
         return ', traits: [' . implode(', ', $parts) . ']';
@@ -916,7 +921,7 @@ final class SchemasGenerator
     }
 
     /**
-     * Build a `, targetClass: \Foo\Bar::class` constructor argument fragment
+     * Build a `, targetClass: Foo::class` constructor argument fragment
      * for shape types that have a generated PHP class. Returns an empty
      * string for primitive targets that need no runtime class dispatch.
      *
@@ -925,7 +930,10 @@ final class SchemasGenerator
      * `ArrayShapeSerializer::fromArray()` instantiation of nested struct,
      * union, and enum members.
      */
-    private function buildTargetClassParam(string $targetId, string $targetType): string
+    private function buildTargetClassParam(
+        string $targetId,
+        string $targetType
+    ): string
     {
         if (!\in_array(
             $targetType,
@@ -934,7 +942,124 @@ final class SchemasGenerator
         )) {
             return '';
         }
-        $fqcn = $this->symbolProvider->toClassName($targetId);
-        return ", targetClass: \\{$fqcn}::class";
+        $targetClass = $this->targetClassReference($targetId);
+
+        return ", targetClass: {$targetClass}::class";
+    }
+
+    /**
+     * Precompute collision-safe target-class references.
+     */
+    private function prepareTargetClassReferences(
+        PhpCodeWriter $writer
+    ): void
+    {
+        $this->activeWriter = $writer;
+        $this->targetClassReferences = [];
+        $this->targetClassFqcns = [];
+        $this->importedTargetClasses = [];
+
+        /** @var array<string, array<string, list<string>>> $groups */
+        $groups = [];
+        $shapeIds = ['smithy.api#Unit'];
+        foreach ($this->model->getShapes() as $shapeId => $shape) {
+            if (!\in_array(
+                $shape['type'] ?? null,
+                ['structure', 'union', 'enum', 'intEnum'],
+                true
+            ) || isset($shape['traits']['smithy.api#mixin'])) {
+                continue;
+            }
+            $shapeIds[] = $shapeId;
+        }
+
+        foreach ($shapeIds as $shapeId) {
+            $fqcn = $this->symbolProvider->toClassName($shapeId);
+            $shortName = $this->symbolProvider->toShortClassName($shapeId);
+            $groups[$shortName][$fqcn][] = $shapeId;
+        }
+        \ksort($groups);
+
+        $reservedNames = [
+            'Schema' => true,
+            'Schemas' => true,
+            'ShapeType' => true
+        ];
+        $rawNames = \array_fill_keys(\array_keys($groups), true);
+        $usedNames = $reservedNames;
+
+        foreach ($groups as $shortName => $classes) {
+            \ksort($classes);
+            $useShortName = !isset($usedNames[$shortName]);
+            foreach ($classes as $fqcn => $classShapeIds) {
+                if ($useShortName) {
+                    $reference = $shortName;
+                    $usedNames[$reference] = true;
+                    $useShortName = false;
+                } else {
+                    $reference = $this->allocateTargetClassAlias(
+                        $shortName,
+                        $usedNames,
+                        $rawNames
+                    );
+                }
+
+                foreach ($classShapeIds as $shapeId) {
+                    $this->targetClassReferences[$shapeId] = $reference;
+                    $this->targetClassFqcns[$shapeId] = $fqcn;
+                }
+            }
+        }
+    }
+
+    /**
+     * Allocate an alias that cannot collide with another generated class.
+     *
+     * @param array<string, true> $usedNames
+     * @param array<string, true> $rawNames
+     */
+    private function allocateTargetClassAlias(
+        string $shortName,
+        array &$usedNames,
+        array $rawNames
+    ): string
+    {
+        $base = $shortName . 'Target';
+        $alias = $base;
+        $suffix = 2;
+        while (isset($usedNames[$alias]) || isset($rawNames[$alias])) {
+            $alias = $base . $suffix;
+            ++$suffix;
+        }
+        $usedNames[$alias] = true;
+
+        return $alias;
+    }
+
+    /**
+     * Register and return the class reference for a generated target.
+     */
+    private function targetClassReference(string $shapeId): string
+    {
+        $reference = $this->targetClassReferences[$shapeId]
+            ?? throw new \LogicException(
+                "No target class reference was prepared for {$shapeId}"
+            );
+        $fqcn = $this->targetClassFqcns[$shapeId];
+
+        if (!isset($this->importedTargetClasses[$fqcn])) {
+            $writer = $this->activeWriter
+                ?? throw new \LogicException(
+                    'Target classes can only be imported during generation'
+                );
+            $shortName = $this->symbolProvider->toShortClassName($shapeId);
+            $writer->addImport(
+                $fqcn,
+                $reference === $shortName ? null : $reference
+            );
+            $this->importedTargetClasses[$fqcn] = true;
+        }
+
+        return $reference;
     }
 }
