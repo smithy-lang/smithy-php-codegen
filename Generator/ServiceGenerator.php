@@ -53,8 +53,10 @@ final class ServiceGenerator
         $writer = new PhpCodeWriter($namespace);
 
         // Add imports
+        $writer->addImport('Smithy\\Core\\Serde\\Schema');
         $writer->addImport('Smithy\\Core\\Shape\\GeneratedServiceTrait');
         $writer->addImport('Smithy\\Core\\Shape\\ServiceInterface');
+        $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
 
         // Import operation classes
         $operationsNamespace = $this->settings->resolveOperationsNamespace();
@@ -89,6 +91,9 @@ final class ServiceGenerator
         $writer->writeLine('use GeneratedServiceTrait;');
         $writer->writeLine();
 
+        $writer->writeLine('private static ?Schema $SCHEMA = null;');
+        $writer->writeLine();
+
         // name()
         $writer->writeLine('public static function name(): string');
         $writer->openBlock('{');
@@ -116,6 +121,9 @@ final class ServiceGenerator
         $writer->closeBlock();
         $writer->writeLine();
 
+        $this->writeSchemaMethod($writer, $shapeId, $traits);
+        $writer->writeLine();
+
         // operations()
         $writer->writeLine('public static function operations(): array');
         $writer->openBlock('{');
@@ -141,6 +149,74 @@ final class ServiceGenerator
             path: $filePath,
             content: $writer->toFileContent()
         );
+    }
+
+    /**
+     * @param array<string, mixed> $traits
+     */
+    private function writeSchemaMethod(
+        PhpCodeWriter $writer,
+        string $shapeId,
+        array $traits
+    ): void
+    {
+        $configuredTraits = [];
+        foreach ($this->settings->schemaTraitIndices as $traitId => $index) {
+            if (\array_key_exists($traitId, $traits)) {
+                $configuredTraits[$traitId] = [
+                    'index' => $index,
+                    'value' => $traits[$traitId]
+                ];
+            }
+        }
+
+        $writer->writeDocBlock(['Get the service shape schema.']);
+        $writer->writeLine('public static function schema(): Schema');
+        $writer->openBlock('{');
+        $writer->writeLine('return self::$SCHEMA ??= new Schema(');
+        $writer->pushIndent();
+        $writer->writeLine(
+            'id: ' . PhpCodeWriter::exportLiteral($shapeId) . ','
+        );
+        $writer->writeLine('type: ShapeType::Service,');
+        if ($configuredTraits !== []) {
+            $writer->writeLine('traits: [');
+            $writer->pushIndent();
+            foreach ($configuredTraits as $trait) {
+                $writer->writeLine(
+                    $trait['index']
+                        . ' => '
+                        . self::exportTraitLiteral($trait['value'])
+                        . ','
+                );
+            }
+            $writer->popIndent();
+            $writer->writeLine('],');
+            $writer->writeLine('traitsById: [');
+            $writer->pushIndent();
+            foreach ($configuredTraits as $traitId => $trait) {
+                $writer->writeLine(
+                    PhpCodeWriter::exportLiteral($traitId)
+                        . ' => '
+                        . self::exportTraitLiteral($trait['value'])
+                        . ','
+                );
+            }
+            $writer->popIndent();
+            $writer->writeLine('],');
+        }
+        $writer->popIndent();
+        $writer->writeLine(');');
+        $writer->closeBlock();
+    }
+
+    private static function exportTraitLiteral(mixed $value): string
+    {
+        if ($value === [] || $value === (object)[]) {
+            return 'true';
+        }
+
+        return PhpCodeWriter::exportLiteral($value);
     }
 
     private function resolveServiceName(string $name): string
