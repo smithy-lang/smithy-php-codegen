@@ -229,14 +229,19 @@ final class ClientGenerator
             }
         }
 
-        $configClass = '\\' . \ltrim(
-            $this->settings->clientConfigClass,
-            '\\'
-        );
-        $pluginCollectionClass = '\\' . self::PLUGIN_COLLECTION;
         foreach ($pluginClasses as $pluginClass) {
             $writer->addImport($pluginClass);
         }
+        $configClass = $writer->addImportReference(
+            $this->settings->clientConfigClass,
+            'ConfiguredClientConfig',
+            [$className]
+        );
+        $pluginCollectionClass = $writer->addImportReference(
+            self::PLUGIN_COLLECTION,
+            'RuntimePluginCollection',
+            [$className]
+        );
         $writer->writeLine('public function __construct(');
         $writer->pushIndent();
         $writer->writeLine("{$configClass} \$config,");

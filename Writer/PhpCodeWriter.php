@@ -25,6 +25,9 @@ final class PhpCodeWriter
     /** @var array<string, string> FQCN => short name */
     private array $imports = [];
 
+    /** @var array<string, string> Same-namespace FQCN => short name */
+    private array $sameNamespaceReferences = [];
+
     private string $namespace = '';
 
     /**
@@ -51,14 +54,64 @@ final class PhpCodeWriter
 
         $fqcnNamespace = $this->extractNamespace($fqcn);
         $fqcnShortName = $this->extractShortName($fqcn);
-        if ($fqcnNamespace === $this->namespace
-            && ($alias === null || $alias === $fqcnShortName)
-        ) {
-            return;
+        if ($fqcnNamespace === $this->namespace) {
+            $this->sameNamespaceReferences[$fqcn] = $fqcnShortName;
+            if ($alias === null || $alias === $fqcnShortName) {
+                return;
+            }
         }
 
         $shortName = $alias ?? $fqcnShortName;
         $this->imports[$fqcn] = $shortName;
+    }
+
+    /**
+     * Add an import and return the name that should reference it.
+     *
+     * When the class's short name is already imported or reserved, a unique
+     * alias derived from `$aliasBase` is used.
+     *
+     * @param list<string> $reservedNames
+     */
+    public function addImportReference(
+        string $fqcn,
+        string $aliasBase,
+        array $reservedNames = []
+    ): string
+    {
+        $fqcn = \ltrim($fqcn, '\\');
+        if (isset($this->imports[$fqcn])) {
+            return $this->imports[$fqcn];
+        }
+        if (isset($this->sameNamespaceReferences[$fqcn])) {
+            return $this->sameNamespaceReferences[$fqcn];
+        }
+
+        $usedNames = [];
+        foreach ([
+            ...\array_values($this->imports),
+            ...\array_values($this->sameNamespaceReferences),
+            ...$reservedNames
+        ] as $usedName) {
+            $usedNames[\strtolower($usedName)] = true;
+        }
+        $shortName = $this->extractShortName($fqcn);
+        $reference = $shortName;
+        if (isset($usedNames[\strtolower($reference)])) {
+            $reference = $aliasBase;
+            $suffix = 2;
+            while (isset($usedNames[\strtolower($reference)])) {
+                $reference = $aliasBase . $suffix;
+                ++$suffix;
+            }
+        }
+
+        $this->addImport(
+            $fqcn,
+            $reference === $shortName ? null : $reference
+        );
+
+        return $reference;
     }
 
     /**
@@ -350,6 +403,7 @@ final class PhpCodeWriter
         $this->buffer = '';
         $this->indentLevel = 0;
         $this->imports = [];
+        $this->sameNamespaceReferences = [];
     }
 
     private function extractNamespace(string $fqcn): string

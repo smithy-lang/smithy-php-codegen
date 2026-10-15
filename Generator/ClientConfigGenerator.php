@@ -40,11 +40,12 @@ final class ClientConfigGenerator
 
         $shortName = $this->shortName($serviceShapeId);
         $className = $shortName . 'ClientConfig';
-        $configClass = '\\' . \ltrim(
-            $this->settings->clientConfigClass,
-            '\\'
-        );
         $writer = new PhpCodeWriter($this->settings->namespace);
+        $configClass = $writer->addImportReference(
+            $this->settings->clientConfigClass,
+            'BaseClientConfig',
+            [$className]
+        );
         $writer->writeDocBlock([
             "Configuration for {@see {$shortName}Client}."
         ]);
