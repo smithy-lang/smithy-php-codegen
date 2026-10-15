@@ -15,29 +15,57 @@ use Smithy\Codegen\Model\SmithyModel;
 final class PhpSymbolProvider
 {
     /**
-     * PHP identifiers reserved by the language that cannot be used as
-     * bare class names, plus a forward-compat set covering keywords the
-     * PHP core reserves "for future use".
+     * PHP keywords, compile-time constants, and reserved type names that
+     * cannot be emitted as bare class names, plus PHP's soft-reserved names.
      *
-     * The list is intentionally superset-y: some entries (like `enum`)
-     * only became class-name-illegal in PHP 8.1+, but keeping the check
-     * conservative avoids version-sensitive codegen output. Case is
-     * insignificant - PHP class identifiers themselves are case-
-     * insensitive when it comes to reserved-word collisions.
+     * Soft-reserved names are included so generated clients remain valid if
+     * PHP assigns those names language meaning in a future release. Matching
+     * is case-insensitive because PHP class names and reserved words are
+     * case-insensitive.
      *
      * When a shape's short name lands on this list, {@see toShortClassName()}
      * prefixes it with the current service short name (`StorageObject`,
      * `ComputeResource`, etc.) so the emitted PHP is legal.
      *
      * @see https://www.php.net/manual/en/reserved.keywords.php
+     * @see https://www.php.net/manual/en/reserved.other-reserved-words.php
      */
     private const RESERVED_CLASS_NAMES = [
-        // PHP core reserved (any version).
+        // Language keywords.
+        '__halt_compiler',
+        'abstract', 'and', 'array', 'as',
+        'break',
+        'callable', 'case', 'catch', 'class', 'clone', 'const', 'continue',
+        'declare', 'default', 'die', 'do',
+        'echo', 'else', 'elseif', 'empty',
+        'enddeclare', 'endfor', 'endforeach', 'endif',
+        'endswitch', 'endwhile', 'eval', 'exit', 'extends',
+        'final', 'finally', 'fn', 'for', 'foreach', 'function',
+        'global', 'goto',
+        'if', 'implements', 'include', 'include_once',
+        'instanceof', 'insteadof', 'interface', 'isset',
+        'list',
+        'match',
+        'namespace', 'new',
+        'or',
+        'print', 'private', 'protected', 'public',
+        'readonly', 'require', 'require_once', 'return',
+        'static', 'switch',
+        'throw', 'trait', 'try',
+        'unset', 'use',
+        'var',
+        'while',
+        'xor',
+        'yield',
+        // Compile-time constants.
+        '__class__', '__dir__', '__file__', '__function__', '__line__',
+        '__method__', '__namespace__', '__property__', '__trait__',
+        // Other reserved type and literal names.
+        'parent', 'self',
         'int', 'float', 'bool', 'string', 'true', 'false', 'null',
-        'void', 'iterable', 'object', 'mixed', 'never', 'numeric',
-        'resource', 'self', 'parent', 'static',
-        // Reserved in newer PHP. harmless to reject in older versions too.
-        'enum', 'readonly', 'list', 'match'
+        'void', 'iterable', 'object', 'mixed', 'never',
+        // Soft-reserved for possible future language use.
+        'enum', 'resource', 'numeric'
     ];
 
     /**
