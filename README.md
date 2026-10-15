@@ -66,6 +66,18 @@ For a fixed model and configuration, generation produces deterministic output.
 By default, regeneration preserves existing schema member order in the same
 output directory.
 
+`generateAndWrite()` treats the configured output directory as managed
+generated output. It renders the complete result in a sibling staging
+directory and replaces the prior output only after every file is written.
+This removes stale generated files while leaving the previous output intact
+when generation or pre-commit publication fails. Existing output-directory
+permissions are retained. A post-commit backup-cleanup failure leaves the new
+output installed and reports the remaining backup path. Do not place
+handwritten files in the configured output directory. For safety, a nonempty
+existing directory is adopted only when `Schemas.php` contains the generated
+registry signature. The output directory also cannot contain the process's
+current working directory.
+
 The generator accepts one non-prelude service per invocation. Provide a model
 with one non-prelude service.
 

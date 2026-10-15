@@ -9,6 +9,7 @@ use Smithy\Codegen\Generator\ClientGenerator;
 use Smithy\Codegen\Generator\EndpointBytecodeGenerator;
 use Smithy\Codegen\Generator\EnumGenerator;
 use Smithy\Codegen\Generator\GeneratedFile;
+use Smithy\Codegen\Generator\GeneratedOutputPublisher;
 use Smithy\Codegen\Generator\OperationGenerator;
 use Smithy\Codegen\Generator\SchemasGenerator;
 use Smithy\Codegen\Generator\ServiceExceptionGenerator;
@@ -535,19 +536,21 @@ final class CodeGenerator
     }
 
     /**
-     * Generate all shapes and write them to disk.
+     * Generate all shapes and transactionally replace the output directory.
      *
-     * The configured output tree must not be modified concurrently.
+     * The configured output directory is managed generated output. Files not
+     * produced by the current generation are removed during publication. The
+     * output tree must not be modified concurrently.
      *
      * @return int Number of files written
      */
     public function generateAndWrite(): int
     {
         $files = $this->generate();
-
-        foreach ($files as $file) {
-            $file->writeToDisk($this->settings->outputDir);
-        }
+        (new GeneratedOutputPublisher())->publish(
+            $files,
+            $this->settings->outputDir
+        );
 
         return count($files);
     }

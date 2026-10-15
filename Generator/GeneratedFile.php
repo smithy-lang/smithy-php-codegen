@@ -43,6 +43,70 @@ final class GeneratedFile
     ) {}
 
     /**
+     * Resolve a configured output directory without requiring it to exist.
+     *
+     * @internal
+     */
+    public static function resolveOutputRoot(string $path): string
+    {
+        self::validatePathInput($path);
+        $path = self::absolutePath($path, true);
+        $leaf = \basename($path);
+        if ($leaf === '..') {
+            return self::resolveConfiguredRoot($path);
+        }
+
+        $parent = self::resolveConfiguredRoot(\dirname($path));
+
+        return \rtrim($parent, DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR
+            . $leaf;
+    }
+
+    /**
+     * Determine whether a root contains an existing path.
+     *
+     * @internal
+     */
+    public static function containsPath(string $root, string $path): bool
+    {
+        self::validatePathInput($root);
+        self::validatePathInput($path);
+
+        return self::isPathWithinRoot(
+            self::resolveExistingAncestor(
+                self::absolutePath($path, true)
+            ),
+            self::resolveOutputRoot($root)
+        );
+    }
+
+    /**
+     * Get this file's path relative to a configured output directory.
+     *
+     * @internal
+     */
+    public function pathRelativeTo(string $allowedRoot): string
+    {
+        self::validatePathInput($this->path);
+        self::validatePathInput($allowedRoot);
+        $root = self::absolutePath($allowedRoot, true);
+        $path = self::absolutePath($this->path, true);
+        $prefix = \rtrim($root, DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR;
+        if (!self::pathStartsWith($path, $prefix)) {
+            throw new \RuntimeException(
+                "Refusing to map generated file outside {$root}: {$path}"
+            );
+        }
+
+        $relativePath = \substr($path, \strlen($prefix));
+        self::rejectParentTraversal($relativePath);
+
+        return $relativePath;
+    }
+
+    /**
      * Write the generated file to disk.
      *
      * The caller must prevent concurrent mutation of the output tree during

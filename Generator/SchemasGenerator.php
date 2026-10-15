@@ -24,6 +24,14 @@ use Smithy\Codegen\Writer\PhpCodeWriter;
  */
 final class SchemasGenerator
 {
+    /**
+     * Identifies a schema registry emitted by this generator.
+     *
+     * @internal
+     */
+    public const GENERATED_FILE_SIGNATURE =
+        'Centralized schema registry for all shapes in this service.';
+
     private const DIRECT_MEMBER_TRAITS_BY_ID = [
         'smithy.rules#contextParam' => true,
     ];
@@ -122,7 +130,7 @@ final class SchemasGenerator
         $this->prepareTargetClassReferences($writer);
 
         $writer->writeDocBlock([
-            'Centralized schema registry for all shapes in this service.',
+            self::GENERATED_FILE_SIGNATURE,
             '',
             'Stores Schema objects as lazy public static properties.',
             'Each structure has a dedicated member initializer.'
