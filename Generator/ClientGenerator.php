@@ -216,22 +216,6 @@ final class ClientGenerator
         );
         $writer->openBlock('{');
 
-        $pluginClasses = [];
-        foreach ($this->settings->clientPluginsByOperationTrait
-            as $traitId => $pluginClass
-        ) {
-            if ($this->serviceHasOperationTrait(
-                    $serviceShapeId,
-                    $traitId
-                )
-            ) {
-                $pluginClasses[] = $pluginClass;
-            }
-        }
-
-        foreach ($pluginClasses as $pluginClass) {
-            $writer->addImport($pluginClass);
-        }
         $configClass = $writer->addImportReference(
             $this->settings->clientConfigClass,
             'ConfiguredClientConfig',
@@ -240,6 +224,12 @@ final class ClientGenerator
         $pluginCollectionClass = $writer->addImportReference(
             self::PLUGIN_COLLECTION,
             'RuntimePluginCollection',
+            [$className]
+        );
+        $serviceClass = $shortName . 'Service';
+        $serviceReference = $writer->addImportReference(
+            $namespace . '\\' . $serviceClass,
+            $serviceClass . 'Metadata',
             [$className]
         );
         $writer->writeLine('public function __construct(');
@@ -252,26 +242,14 @@ final class ClientGenerator
         $writer->popIndent();
         $writer->writeLine(')');
         $writer->openBlock('{');
-        if ($pluginClasses !== []) {
-            $writer->writeLine(
-                '$plugins = $plugins->merge(new '
-                    . $pluginCollectionClass
-                    . '('
-            );
-            $writer->pushIndent();
-            $lastPlugin = \count($pluginClasses) - 1;
-            foreach ($pluginClasses as $index => $pluginClass) {
-                $writer->writeLine(
-                    'new '
-                    . $this->shortName($pluginClass)
-                    . '()'
-                    . ($index === $lastPlugin ? '' : ',')
-                );
-            }
-            $writer->popIndent();
-            $writer->writeLine('));');
-        }
-        $writer->writeLine('parent::__construct($config, $plugins);');
+        $writer->writeLine('parent::__construct(');
+        $writer->pushIndent();
+        $writer->writeLine(
+            "\$config->withService({$serviceReference}::instance()),"
+        );
+        $writer->writeLine('$plugins');
+        $writer->popIndent();
+        $writer->writeLine(');');
         $writer->closeBlock();
         if ($operations !== []) {
             $writer->writeLine();
@@ -782,27 +760,6 @@ final class ClientGenerator
         }
 
         return $ops;
-    }
-
-    private function serviceHasOperationTrait(
-        string $serviceShapeId,
-        string $traitId
-    ): bool
-    {
-        foreach ($this->model->getServiceOperationIds($serviceShapeId)
-            as $opShapeId
-        ) {
-            $opShape = $this->model->getShape($opShapeId);
-            if ($opShape === null || ($opShape['type'] ?? '') !== 'operation') {
-                continue;
-            }
-
-            if (isset(($opShape['traits'] ?? [])[$traitId])) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

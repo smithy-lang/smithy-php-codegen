@@ -50,7 +50,6 @@ final class CodegenSettings
      * @param string $clientBaseClass Base class with an AbstractClient-
      *     compatible constructor accepting the configured client config
      *     class and PluginCollection.
-     * @param array<string, string> $clientPluginsByOperationTrait
      * @param array<string, array<string, string>> $shapeConstants
      * @param array<string, list<string>> $errorDiscriminators
      * @param array<string, int> $schemaTraitIndices
@@ -85,12 +84,6 @@ final class CodegenSettings
         public readonly array $operationConstants = [],
         public readonly string $clientBaseClass =
             self::DEFAULT_CLIENT_BASE_CLASS,
-        public readonly array $clientPluginsByOperationTrait = [
-            'smithy.api#requestCompression' =>
-                'Smithy\\Client\\Plugin\\RequestCompressionPlugin',
-            'smithy.api#httpChecksumRequired' =>
-                'Smithy\\Client\\Plugin\\HttpChecksumPlugin'
-        ],
         public readonly bool $generateClient = true,
         public readonly bool $generateClientConfig = true,
         public readonly array $shapeConstants = [],
@@ -179,17 +172,6 @@ final class CodegenSettings
                 'clientBaseClass',
                 'client_base_class',
                 self::DEFAULT_CLIENT_BASE_CLASS
-            ),
-            clientPluginsByOperationTrait: self::aliasedValue(
-                $config,
-                'clientPluginsByOperationTrait',
-                'client_plugins_by_operation_trait',
-                [
-                    'smithy.api#requestCompression' =>
-                        'Smithy\\Client\\Plugin\\RequestCompressionPlugin',
-                    'smithy.api#httpChecksumRequired' =>
-                        'Smithy\\Client\\Plugin\\HttpChecksumPlugin'
-                ]
             ),
             generateClient: self::booleanAliasedValue(
                 $config,
@@ -403,10 +385,6 @@ final class CodegenSettings
         $this->validateConstantMaps(
             $this->operationConstants,
             'operationConstants'
-        );
-        $this->validateStringMap(
-            $this->clientPluginsByOperationTrait,
-            'clientPluginsByOperationTrait'
         );
         $this->validateConstantMaps(
             $this->shapeConstants,
@@ -755,8 +733,6 @@ final class CodegenSettings
             'operation_constants',
             'clientBaseClass',
             'client_base_class',
-            'clientPluginsByOperationTrait',
-            'client_plugins_by_operation_trait',
             'generateClient',
             'generate_client',
             'generateClientConfig',
