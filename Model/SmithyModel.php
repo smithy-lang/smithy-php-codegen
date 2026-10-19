@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Smithy\Codegen\Model;
 
+use Smithy\Client\Waiter\WaiterDefinitionNormalizer;
 use Smithy\Codegen\ShapeCategory;
 use Smithy\Core\Model\EffectiveAuthSchemes;
 
@@ -344,7 +345,6 @@ final class SmithyModel
     ): array
     {
         $waitersByOperation = [];
-        $waiterOwners = [];
 
         foreach ($this->getServiceOperationIds($serviceShapeId)
             as $operationShapeId
@@ -354,22 +354,13 @@ final class SmithyModel
                 continue;
             }
 
-            foreach (\array_keys($waiters) as $waiterName) {
-                $normalizedName = \strtolower($waiterName);
-                $owner = $waiterOwners[$normalizedName] ?? null;
-                if ($owner !== null) {
-                    throw new \LogicException(
-                        "Service {$serviceShapeId} has duplicate waiter "
-                        . "name {$waiterName} on {$owner} and "
-                        . "{$operationShapeId}."
-                    );
-                }
-
-                $waiterOwners[$normalizedName] = $operationShapeId;
-            }
-
             $waitersByOperation[$operationShapeId] = $waiters;
         }
+
+        WaiterDefinitionNormalizer::indexServiceWaiters(
+            $serviceShapeId,
+            $waitersByOperation
+        );
 
         return $waitersByOperation;
     }

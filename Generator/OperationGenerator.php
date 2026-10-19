@@ -134,6 +134,11 @@ final class OperationGenerator
         $httpTrait = $traits['smithy.api#http'] ?? null;
         $paginatedTrait =
             $this->model->getValidatedPaginationTrait($shapeId);
+        $waitableTrait = null;
+        if (isset($traits['smithy.waiters#waitable'])) {
+            $this->model->getValidatedWaiters($shapeId);
+            $waitableTrait = $traits['smithy.waiters#waitable'];
+        }
         $authSchemes = $serviceId === null
             ? [EffectiveAuthSchemes::NO_AUTH]
             : $this->model->getEffectiveAuthSchemeIds(
@@ -315,6 +320,7 @@ final class OperationGenerator
             $shapeId,
             $httpTrait,
             $paginatedTrait,
+            $waitableTrait,
             $inputTarget,
             $errorMap,
             isset($traits['smithy.api#httpChecksumRequired']),
@@ -583,6 +589,7 @@ final class OperationGenerator
      *
      * @param array<string, mixed>|null $httpTrait
      * @param array<string, string>|null $paginatedTrait
+     * @param mixed $waitableTrait
      * @param string|null $inputTarget Input shape ID for resolving members.
      * @param array<string, array{class: string, shapeId: string}> $errorMap
      *        Error discriminator metadata.
@@ -594,6 +601,7 @@ final class OperationGenerator
         string $shapeId,
         ?array $httpTrait,
         ?array $paginatedTrait,
+        mixed $waitableTrait,
         ?string $inputTarget,
         array $errorMap,
         bool $httpChecksumRequired,
@@ -622,6 +630,10 @@ final class OperationGenerator
         if ($paginatedTrait !== null) {
             $traitParts[] =
                 $this->buildPaginatedTraitArrayLiteral($paginatedTrait);
+        }
+        if ($waitableTrait !== null) {
+            $traitParts[] =
+                $this->buildWaitableTraitArrayLiteral($waitableTrait);
         }
         if ($errorMap !== []) {
             $traitParts[] = 'Schema::T_ERRORS => self::ERRORS,';
@@ -730,6 +742,72 @@ final class OperationGenerator
         $lines[] = '],';
 
         return \implode("\n", $lines);
+    }
+
+    /**
+     * Render the `@waitable` trait as a readable nested PHP array.
+     *
+     * @param array<string, mixed> $waitableTrait
+     */
+    private function buildWaitableTraitArrayLiteral(
+        array $waitableTrait
+    ): string
+    {
+        $lines = $this->arrayLiteralLines($waitableTrait);
+        $lines[0] = 'Schema::T_WAITABLE => ' . \ltrim($lines[0]);
+        $last = \array_key_last($lines);
+        $lines[$last] .= ',';
+
+        return \implode("\n", $lines);
+    }
+
+    /**
+     * Render a nested PHP array with deterministic indentation.
+     *
+     * @param array<mixed> $value
+     *
+     * @return list<string>
+     */
+    private function arrayLiteralLines(
+        array $value,
+        int $depth = 0
+    ): array
+    {
+        $indent = \str_repeat('    ', $depth);
+        if ($value === []) {
+            return [$indent . '[]'];
+        }
+
+        $lines = [$indent . '['];
+        $entryIndent = \str_repeat('    ', $depth + 1);
+        $isList = \array_is_list($value);
+        foreach ($value as $key => $member) {
+            $prefix = $isList
+                ? ''
+                : $this->exportLiteral($key) . ' => ';
+            if (!\is_array($member)) {
+                $lines[] = $entryIndent
+                    . $prefix
+                    . $this->exportLiteral($member)
+                    . ',';
+                continue;
+            }
+
+            $nested = $this->arrayLiteralLines($member, $depth + 1);
+            $lines[] = $entryIndent
+                . $prefix
+                . \ltrim(\array_shift($nested));
+            if ($nested === []) {
+                $lines[\array_key_last($lines)] .= ',';
+                continue;
+            }
+            $nestedLast = \array_key_last($nested);
+            $nested[$nestedLast] .= ',';
+            \array_push($lines, ...$nested);
+        }
+        $lines[] = $indent . ']';
+
+        return $lines;
     }
 
     /**

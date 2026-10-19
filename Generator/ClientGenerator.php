@@ -26,13 +26,9 @@ final class ClientGenerator
         'Smithy\\Client\\RequestOverrideConfig';
 
     /** Runtime types used by generated waiter methods. */
-    private const WAITER_ACCEPTOR = 'Smithy\\Client\\Waiter\\Acceptor';
     private const WAITER_CONFIG = 'Smithy\\Client\\Waiter\\WaiterConfig';
     private const WAITER_FAILURE =
         'Smithy\\Client\\Waiter\\WaiterFailureException';
-    private const WAITER_MATCHER = 'Smithy\\Client\\Waiter\\Matcher';
-    private const WAITER_PATH_COMPARATOR =
-        'Smithy\\Client\\Waiter\\PathComparator';
     private const WAITER_RESULT = 'Smithy\\Client\\Waiter\\WaiterResult';
 
     /**
@@ -184,11 +180,8 @@ final class ClientGenerator
                 $writer->addImport(self::PAGINATOR);
             }
             if ($op['waiters'] !== []) {
-                $writer->addImport(self::WAITER_ACCEPTOR);
                 $writer->addImport(self::WAITER_CONFIG);
                 $writer->addImport(self::WAITER_FAILURE);
-                $writer->addImport(self::WAITER_MATCHER);
-                $writer->addImport(self::WAITER_PATH_COMPARATOR);
                 $writer->addImport(self::WAITER_RESULT);
             }
         }
@@ -462,115 +455,13 @@ final class ClientGenerator
         $writer->writeLine('return $this->createWaiter(');
         $writer->pushIndent();
         $writer->writeLine("{$op['operationShort']}::instance(),");
-        $writer->writeLine('[');
-        $writer->pushIndent();
-        $acceptors = $waiter['acceptors'];
-        $lastAcceptor = \count($acceptors) - 1;
-        foreach ($acceptors as $index => $acceptor) {
-            $this->writeWaiterAcceptor(
-                $writer,
-                $acceptor,
-                $index !== $lastAcceptor
-            );
-        }
-        $writer->popIndent();
-        $writer->writeLine('],');
-        $writer->writeLine("{$waiter['minDelay']},");
-        $writer->writeLine("{$waiter['maxDelay']},");
+        $writer->writeLine(
+            self::renderString($waiterName) . ','
+        );
         $writer->writeLine('$config');
         $writer->popIndent();
         $writer->writeLine(')->wait($input, $maxWaitTime);');
         $writer->closeBlock();
-    }
-
-    /**
-     * Emit one normalized waiter acceptor.
-     *
-     * @param array<string, mixed> $acceptor
-     *
-     * @return void
-     */
-    private function writeWaiterAcceptor(
-        PhpCodeWriter $writer,
-        array $acceptor,
-        bool $hasNext
-    ): void
-    {
-        $state = match ($acceptor['state']) {
-            'success' => 'SUCCESS',
-            'failure' => 'FAILURE',
-            'retry' => 'RETRY'
-        };
-        $hasMessage = $acceptor['message'] !== null;
-
-        $writer->writeLine('new Acceptor(');
-        $writer->pushIndent();
-        $writer->writeLine("Acceptor::{$state},");
-        $this->writeWaiterMatcher(
-            $writer,
-            $acceptor['matcher'],
-            $hasMessage
-        );
-        if ($hasMessage) {
-            $writer->writeLine(
-                self::renderString($acceptor['message'])
-            );
-        }
-        $writer->popIndent();
-        $writer->writeLine($hasNext ? '),' : ')');
-    }
-
-    /**
-     * Emit one normalized waiter matcher.
-     *
-     * @param array<string, mixed> $matcher
-     *
-     * @return void
-     */
-    private function writeWaiterMatcher(
-        PhpCodeWriter $writer,
-        array $matcher,
-        bool $hasFollowingArgument
-    ): void
-    {
-        $suffix = $hasFollowingArgument ? ',' : '';
-        if ($matcher['type'] === 'success') {
-            $expected = $matcher['expected'] ? 'true' : 'false';
-            $writer->writeLine(
-                "Matcher::success({$expected}){$suffix}"
-            );
-
-            return;
-        }
-
-        if ($matcher['type'] === 'errorType') {
-            $expected = self::renderString($matcher['expected']);
-            $writer->writeLine(
-                "Matcher::errorType({$expected}){$suffix}"
-            );
-
-            return;
-        }
-
-        $factory = $matcher['type'];
-        $comparator = match ($matcher['comparator']) {
-            'stringEquals' => 'StringEquals',
-            'booleanEquals' => 'BooleanEquals',
-            'allStringEquals' => 'AllStringEquals',
-            'anyStringEquals' => 'AnyStringEquals'
-        };
-
-        $writer->writeLine("Matcher::{$factory}(");
-        $writer->pushIndent();
-        $writer->writeLine(
-            self::renderString($matcher['path']) . ','
-        );
-        $writer->writeLine(
-            self::renderString($matcher['expected']) . ','
-        );
-        $writer->writeLine("PathComparator::{$comparator}");
-        $writer->popIndent();
-        $writer->writeLine("){$suffix}");
     }
 
     private static function renderString(string $value): string
