@@ -652,9 +652,7 @@ final class OperationGenerator
         ) {
             $encodings = [];
             foreach ($requestCompressionEncodings as $encoding) {
-                $encodings[] = "'"
-                    . \str_replace("'", "\\'", (string) $encoding)
-                    . "'";
+                $encodings[] = $this->exportLiteral((string) $encoding);
             }
             $traitParts[] = 'Schema::T_REQUEST_COMPRESSION => ['
                 . \implode(', ', $encodings)
@@ -842,12 +840,14 @@ final class OperationGenerator
 
         $lines = ['Schema::T_HTTP => ['];
         if ($method !== null) {
-            $lines[] = "    'method' => '"
-                . \str_replace("'", "\\'", $method)
-                . "',";
+            $lines[] = "    'method' => "
+                . $this->exportLiteral($method)
+                . ',';
         }
         if ($uri !== null) {
-            $lines[] = "    'uri' => '" . \str_replace("'", "\\'", $uri) . "',";
+            $lines[] = "    'uri' => "
+                . $this->exportLiteral($uri)
+                . ',';
         }
         if ($code !== null) {
             $lines[] = "    'code' => {$code},";
@@ -867,7 +867,7 @@ final class OperationGenerator
             $segmentEntries = [];
             foreach ($segments as [$literal, $labelName, $greedy]) {
                 $litStr = $literal !== null
-                    ? "'" . \str_replace("'", "\\'", $literal) . "'"
+                    ? $this->exportLiteral($literal)
                     : 'null';
                 $idxStr = $labelName !== null
                     ? (string) ($memberIndexMap[$labelName] ?? 0)
