@@ -31,6 +31,7 @@ final class UnionGenerator
         'createByIndex',
         'getMemberIndex',
         'getSchema',
+        'jsonSerialize',
         'schema',
         'serialize',
         'tag',
@@ -126,7 +127,22 @@ final class UnionGenerator
         $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
         $withSensitiveStringable =
             $this->sensitiveShapeDetector->containsSensitiveData($shapeId);
+        $jsonSerializable = null;
         if ($withSensitiveStringable) {
+            foreach ($this->model->getMembers($shapeId) as $memberName => $_) {
+                $phpType = $this->symbolProvider->toMemberType(
+                    $shapeId,
+                    $memberName
+                );
+                if ($phpType->requiresImport() && $phpType->fqcn !== null) {
+                    $writer->addImport($phpType->fqcn);
+                }
+            }
+            $jsonSerializable = $writer->addImportReference(
+                'JsonSerializable',
+                'PhpJsonSerializable',
+                [$className, ...\array_column($variantNames, 'class')]
+            );
             $writer->addImport(
                 'Smithy\\Core\\Shape\\SensitiveStringableTrait'
             );
@@ -147,9 +163,13 @@ final class UnionGenerator
         // point. The variant-dispatching body is concrete (lives on the
         // abstract base) so every variant inherits it. active-variant
         // accessors stay abstract since they vary per variant.
+        $interfaces = ['UnionInterface'];
+        if ($jsonSerializable !== null) {
+            $interfaces[] = $jsonSerializable;
+        }
         $writer->writeClassDeclaration(
             "abstract readonly class {$className}",
-            ['UnionInterface']
+            $interfaces
         );
         $writer->openBlock('{');
 
@@ -314,16 +334,13 @@ final class UnionGenerator
         $variantClassName = $baseClassName . 'Unknown';
 
         $writer = new PhpCodeWriter($namespace);
-        $writer->addImport('Smithy\\Core\\Shape\\SensitiveStringableTrait');
 
         $writer->writeDocBlock(['Unknown variant for forward-compatibility.']);
         $writer->writeLine("/** @internal */");
-        $writer->writeLine(
+        $writer->writeClassDeclaration(
             "final readonly class {$variantClassName} extends {$baseClassName}"
         );
         $writer->openBlock('{');
-        $writer->writeLine('use SensitiveStringableTrait;');
-        $writer->writeLine();
         $writer->writeLine(
             'public function __construct('
             . 'private string $unknownTag, '

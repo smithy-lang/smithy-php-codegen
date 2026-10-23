@@ -166,25 +166,6 @@ final class StructureGenerator
             $writer->addImport('Smithy\\Core\\Shape\\ReadonlyArrayAccessTrait');
         }
 
-        // SensitiveStringableTrait provides redaction-aware string and debug
-        // output. Emit it when this shape can transitively contain sensitive
-        // data, including through unions and collections.
-        $withSensitiveStringable = $this->shouldEmitSensitiveStringable(
-            $shapeId
-        );
-        if ($withSensitiveStringable) {
-            $writer->addImport(
-                'Smithy\\Core\\Shape\\SensitiveStringableTrait'
-            );
-        }
-
-        // FromMembersTrait provides the `@internal` `fromMembers()` sink used
-        // by the runtime deserializer. Every generated struct participates in
-        // the codec deserialization path, so the trait applies unconditionally.
-        $writer->addImport('Smithy\\Core\\Shape\\FromMembersTrait');
-
-
-
         // Determine if this is an error shape
         $isError = $category === ShapeCategory::Error;
         $errorFault = null;
@@ -203,6 +184,40 @@ final class StructureGenerator
             $writer->addImport('Smithy\\Core\\Exception\\ErrorFault');
         }
 
+        // SensitiveStringableTrait provides redaction-aware string and debug
+        // output. Emit it when this shape can transitively contain sensitive
+        // data, including through unions and collections.
+        $withSensitiveStringable = $this->shouldEmitSensitiveStringable(
+            $shapeId
+        );
+        $jsonSerializable = null;
+        if ($withSensitiveStringable) {
+            foreach ($this->model->getMembers($shapeId) as $memberName => $_) {
+                $phpType = $this->symbolProvider->toMemberType(
+                    $shapeId,
+                    $memberName
+                );
+                if ($phpType->requiresImport() && $phpType->fqcn !== null) {
+                    $writer->addImport($phpType->fqcn);
+                }
+            }
+            $jsonSerializable = $writer->addImportReference(
+                'JsonSerializable',
+                'PhpJsonSerializable',
+                [$className]
+            );
+            $writer->addImport(
+                'Smithy\\Core\\Shape\\SensitiveStringableTrait'
+            );
+        }
+
+        // FromMembersTrait provides the `@internal` `fromMembers()` sink used
+        // by the runtime deserializer. Every generated struct participates in
+        // the codec deserialization path, so the trait applies unconditionally.
+        $writer->addImport('Smithy\\Core\\Shape\\FromMembersTrait');
+
+
+
         // Write doc comment from shape documentation trait
         $this->writeClassDoc($writer, $shapeId);
 
@@ -218,6 +233,9 @@ final class StructureGenerator
         }
         if ($withArrayAccess) {
             $parts[] = '\\ArrayAccess';
+        }
+        if ($jsonSerializable !== null) {
+            $parts[] = $jsonSerializable;
         }
 
         // Open the class.
