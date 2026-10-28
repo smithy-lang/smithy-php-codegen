@@ -150,12 +150,24 @@ final class OperationGenerator
         $writer->addImport('Smithy\\Core\\Serde\\Schema');
         $writer->addImport('Smithy\\Core\\Serde\\SerializableStructInterface');
         $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
-        $writer->addImport('Smithy\\Core\\Shape\\OperationInterface');
+        $operationInterface = $writer->addImportReference(
+            'Smithy\\Core\\Shape\\OperationInterface',
+            'SmithyOperation',
+            [$className]
+        );
         if ($inputClass === null || $outputClass === null) {
             $writer->addImport(
                 'Smithy\\Core\\Shape\\Document\\StructDocument'
             );
         }
+        $serviceExceptionClass = $writer->addImportReference(
+            $serviceId === null
+                && $this->settings->serviceExceptionClass === null
+                ? 'Smithy\\Core\\Exception\\ApiException'
+                : $this->settings->resolveServiceExceptionClass(),
+            'ServiceException',
+            [$className]
+        );
         // HTTP binding data is emitted as schema traits for the protocol
         // layer to read through the operation schema.
 
@@ -188,10 +200,10 @@ final class OperationGenerator
             $writer->writeDocBlock([$cleanDoc]);
         }
 
-        // Every generated operation implements OperationInterface.
+        // Every generated operation provides its service-specific fallback.
         $writer->writeClassDeclaration(
             "final class {$className}",
-            ['OperationInterface']
+            [$operationInterface]
         );
 
         $writer->openBlock('{');
@@ -203,7 +215,6 @@ final class OperationGenerator
                 ? 'public const SERVICE_ID = null;'
                 : "public const SERVICE_ID = '{$serviceId}';"
         );
-
         if ($inputClass !== null) {
             $writer->writeLine(
                 "public const INPUT_CLASS = {$inputClass}::class;"
@@ -288,6 +299,14 @@ final class OperationGenerator
         $writer->writeLine('public function getServiceId(): ?string');
         $writer->openBlock('{');
         $writer->writeLine('return self::SERVICE_ID;');
+        $writer->closeBlock();
+        $writer->writeLine();
+
+        $writer->writeLine(
+            'public function getServiceExceptionClass(): string'
+        );
+        $writer->openBlock('{');
+        $writer->writeLine("return {$serviceExceptionClass}::class;");
         $writer->closeBlock();
         $writer->writeLine();
 

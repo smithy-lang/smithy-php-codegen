@@ -36,6 +36,8 @@ final class StructureGenerator
 
     private readonly SensitiveShapeDetector $sensitiveShapeDetector;
 
+    private readonly string $errorParentClass;
+
     /**
      * @internal
      */
@@ -59,6 +61,7 @@ final class StructureGenerator
     {
         $this->sensitiveShapeDetector = $sensitiveShapeDetector
             ?? new SensitiveShapeDetector($model);
+        $this->errorParentClass = $this->resolveErrorParentClass();
     }
 
     /**
@@ -177,10 +180,6 @@ final class StructureGenerator
             $errorFault = is_string($errorTraitValue)
                 ? $errorTraitValue
                 : 'other';
-            $errorParentFqcn = $this->settings->serviceExceptionClass
-                ?? $this->settings->baseServiceException
-                ?? 'Smithy\\Core\\Exception\\ApiException';
-            $writer->addImport($errorParentFqcn);
             $writer->addImport('Smithy\\Core\\Exception\\ErrorFault');
         }
 
@@ -249,10 +248,7 @@ final class StructureGenerator
         // schema cache populated on first `schema()` call, so the class-level
         // modifier is incompatible with our schema-caching pattern.
         if ($isError) {
-            $errorParentFqcn = $this->settings->serviceExceptionClass
-                ?? $this->settings->baseServiceException
-                ?? 'Smithy\\Core\\Exception\\ApiException';
-            $parentClass = $this->extractShortName($errorParentFqcn);
+            $parentClass = '\\' . \ltrim($this->errorParentClass, '\\');
             $writer->writeClassDeclaration(
                 "final class {$className} extends {$parentClass}",
                 $parts
@@ -1464,6 +1460,22 @@ final class StructureGenerator
             return $fqcn;
         }
         return substr($fqcn, $lastSlash + 1);
+    }
+
+    private function resolveErrorParentClass(): string
+    {
+        foreach ($this->model->getServiceShapes() as $shapeId => $_) {
+            if (!\str_starts_with($shapeId, 'smithy.api#')) {
+                return $this->settings->resolveServiceExceptionClass();
+            }
+        }
+
+        if ($this->settings->serviceExceptionClass !== null) {
+            return $this->settings->resolveServiceExceptionClass();
+        }
+
+        return $this->settings->baseServiceException
+            ?? 'Smithy\\Core\\Exception\\ApiException';
     }
 
     private function smithyTypeToEnum(string $type): string

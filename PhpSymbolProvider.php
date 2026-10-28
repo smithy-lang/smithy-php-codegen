@@ -102,6 +102,14 @@ final class PhpSymbolProvider
     }
 
     /**
+     * Check whether a name is reserved for PHP class declarations.
+     */
+    public static function isReservedClassName(string $name): bool
+    {
+        return \in_array(\strtolower($name), self::RESERVED_CLASS_NAMES, true);
+    }
+
+    /**
      * Resolve the service name from the configured output namespace.
      */
     private function resolveServicePrefix(): string

@@ -437,7 +437,7 @@ Options:
   --organization=<org>   "categorized" or "flat"
   --array-access=<cats>  Comma-separated shape categories
   --base-exception=<fqcn>
-                         Base exception for modeled errors
+                         Parent of the generated service exception
   --service-exception=<fqcn>
                          Service exception class to generate
   --config=<file>        JSON configuration file

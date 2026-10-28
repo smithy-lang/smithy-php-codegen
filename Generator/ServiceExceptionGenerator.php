@@ -24,13 +24,13 @@ final class ServiceExceptionGenerator
 
     /**
      * Generate the service exception class.
-     *
-     * @param string $serviceName Short service name (e.g., "Weather")
-     * @return GeneratedFile
      */
-    public function generate(string $serviceName): GeneratedFile
+    public function generate(): GeneratedFile
     {
-        $className = $serviceName . 'Exception';
+        $serviceName = $this->settings->resolveServiceName();
+        $serviceExceptionClass =
+            $this->settings->resolveServiceExceptionClass();
+        $className = self::shortClassName($serviceExceptionClass);
         $namespace = $this->settings->resolveNamespace(
             \Smithy\Codegen\ShapeCategory::Error
         );
@@ -38,15 +38,23 @@ final class ServiceExceptionGenerator
             \Smithy\Codegen\ShapeCategory::Error
         );
 
-        // Resolve the parent exception class
         $parentFqcn = $this->settings->baseServiceException
             ?? 'Smithy\\Core\\Exception\\ApiException';
-        $parentShortName = $this->extractShortName($parentFqcn);
-
+        if (\strcasecmp(
+            \ltrim($parentFqcn, '\\'),
+            \ltrim($serviceExceptionClass, '\\')
+        ) === 0) {
+            throw new \InvalidArgumentException(
+                'baseServiceException must not be the generated service '
+                    . 'exception class'
+            );
+        }
         $writer = new PhpCodeWriter($namespace);
-
-        // Import the parent exception
-        $writer->addImport($parentFqcn);
+        $parentClass = $writer->addImportReference(
+            $parentFqcn,
+            'BaseServiceException',
+            [$className]
+        );
 
         $writer->writeDocBlock([
             "Base exception for all {$serviceName} service errors.",
@@ -55,9 +63,15 @@ final class ServiceExceptionGenerator
             'whether modeled or unmodeled.'
         ]);
 
-        $writer->writeLine("class {$className} extends {$parentShortName}");
-        $writer->openBlock('{');
-        $writer->closeBlock();
+        $declaration = "class {$className} extends {$parentClass}";
+        if (\strlen($declaration . ' {}')
+            <= PhpCodeWriter::MAX_GENERATED_LINE_WIDTH
+        ) {
+            $writer->writeLine($declaration . ' {}');
+        } else {
+            $writer->writeLine($declaration);
+            $writer->writeLine('{}');
+        }
 
         $filePath = $outputDir . DIRECTORY_SEPARATOR . $className . '.php';
 
@@ -67,12 +81,12 @@ final class ServiceExceptionGenerator
         );
     }
 
-    private function extractShortName(string $fqcn): string
+    private static function shortClassName(string $class): string
     {
-        $lastSlash = strrpos($fqcn, '\\');
-        if ($lastSlash === false) {
-            return $fqcn;
-        }
-        return substr($fqcn, $lastSlash + 1);
+        $separator = \strrpos($class, '\\');
+
+        return $separator === false
+            ? $class
+            : \substr($class, $separator + 1);
     }
 }

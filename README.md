@@ -30,6 +30,18 @@ A JSON configuration file supplies generator settings:
 vendor/bin/smithy-php-codegen model.json --config=codegen.json
 ```
 
+For example, an SDK can configure both the generated service exception and
+its parent:
+
+```json
+{
+    "namespace": "Example\\Weather",
+    "outputDir": "generated",
+    "serviceExceptionClass": "Example\\Weather\\Exception\\WeatherException",
+    "baseServiceException": "Vendor\\Sdk\\SdkException"
+}
+```
+
 ## PHP API
 
 ```php
@@ -54,11 +66,17 @@ The generator emits the enabled artifacts:
 - operation metadata and service metadata
 - generated service clients and client configuration classes
 - centralized schema registries and type registries
-- modeled service exceptions
+- a per-service exception base and modeled service exceptions
 - endpoint BDD bytecode and endpoint cache-key builders
 
 Generated shapes contain protocol-independent serialization methods.
 `smithy/codec` and `smithy/protocol` determine the wire format at runtime.
+
+Every generated service includes a `<ServiceName>Exception`. Modeled errors
+extend it, and protocols use it for unmodeled service errors. It extends
+`Smithy\Core\Exception\ApiException` by default. `serviceExceptionClass`
+changes the generated class name, while `baseServiceException` changes its
+parent.
 
 ## Stability
 

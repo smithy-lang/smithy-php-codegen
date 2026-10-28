@@ -58,6 +58,14 @@ final class CodegenSettings
      * @param string|null $clientConfigClass Base config type accepted by
      *     the generated client constructor and extended by generated
      *     service config classes.
+     * @param string|null $baseServiceException Parent class for the generated
+     *     service exception. It must extend
+     *     \Smithy\Core\Exception\ApiException, and its public constructor must
+     *     accept a string message, an ErrorFault, and an optional nullable
+     *     Throwable for exception chaining, in that order.
+     * @param string|null $serviceExceptionClass Service exception class to
+     *     generate. Its short name is emitted in the configured error
+     *     namespace.
      */
     public function __construct(
         public readonly string $namespace,
@@ -267,7 +275,33 @@ final class CodegenSettings
             ShapeCategory::Shape => $this->subNamespaces['shapes']
         };
 
-        return $this->outputDir . DIRECTORY_SEPARATOR . $subDirectory;
+        return $this->outputDir
+            . DIRECTORY_SEPARATOR
+            . \str_replace('\\', DIRECTORY_SEPARATOR, $subDirectory);
+    }
+
+    /**
+     * Resolve the generated service name from the configured namespace.
+     */
+    public function resolveServiceName(): string
+    {
+        $parts = \explode('\\', $this->namespace);
+
+        return (string) \end($parts);
+    }
+
+    /**
+     * Resolve the generated service exception class.
+     */
+    public function resolveServiceExceptionClass(): string
+    {
+        $className = $this->serviceExceptionClass === null
+            ? $this->resolveServiceName() . 'Exception'
+            : self::shortClassName($this->serviceExceptionClass);
+
+        return $this->resolveNamespace(ShapeCategory::Error)
+            . '\\'
+            . $className;
     }
 
     /**
@@ -295,7 +329,11 @@ final class CodegenSettings
 
         return $this->outputDir
             . DIRECTORY_SEPARATOR
-            . $this->subNamespaces['operations'];
+            . \str_replace(
+                '\\',
+                DIRECTORY_SEPARATOR,
+                $this->subNamespaces['operations']
+            );
     }
 
     /**
@@ -323,7 +361,11 @@ final class CodegenSettings
 
         return $this->outputDir
             . DIRECTORY_SEPARATOR
-            . $this->subNamespaces['endpoint'];
+            . \str_replace(
+                '\\',
+                DIRECTORY_SEPARATOR,
+                $this->subNamespaces['endpoint']
+            );
     }
 
     /**
@@ -372,6 +414,14 @@ final class CodegenSettings
             $this->serviceExceptionClass,
             'serviceExceptionClass'
         );
+        if (PhpSymbolProvider::isReservedClassName(
+            self::shortClassName($this->resolveServiceExceptionClass())
+        )
+        ) {
+            throw new \InvalidArgumentException(
+                'serviceExceptionClass must not use a reserved PHP class name'
+            );
+        }
         self::requireClassName(
             $this->clientBaseClass,
             'clientBaseClass'
@@ -678,6 +728,15 @@ final class CodegenSettings
         if ($value !== null) {
             self::requireClassName($value, $name);
         }
+    }
+
+    private static function shortClassName(string $class): string
+    {
+        $separator = \strrpos($class, '\\');
+
+        return $separator === false
+            ? $class
+            : \substr($class, $separator + 1);
     }
 
     private static function requireNonEmptyString(
