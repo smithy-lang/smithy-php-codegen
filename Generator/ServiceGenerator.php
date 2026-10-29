@@ -197,13 +197,17 @@ final class ServiceGenerator
             }
             $writer->popIndent();
             $writer->writeLine('],');
+        }
+        if ($traits !== []) {
             $writer->writeLine('traitsById: [');
             $writer->pushIndent();
-            foreach ($configuredTraits as $traitId => $trait) {
+            foreach ($traits as $traitId => $value) {
                 $writer->writeLine(
                     PhpCodeWriter::exportLiteral($traitId)
                         . ' => '
-                        . self::exportTraitLiteral($trait['value'])
+                        . (\array_key_exists($traitId, $configuredTraits)
+                            ? self::exportTraitLiteral($value)
+                            : PhpCodeWriter::exportLiteral($value))
                         . ','
                 );
             }
