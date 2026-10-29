@@ -6,7 +6,7 @@ namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Model\SmithyModel;
-use Smithy\Codegen\PhpSymbolProvider;
+use Smithy\Codegen\PhpSymbolProviderInterface;
 use Smithy\Codegen\Writer\PhpCodeWriter;
 
 /**
@@ -34,7 +34,7 @@ final class TypeRegistryGenerator
      */
     public function __construct(
         private readonly SmithyModel $model,
-        private readonly PhpSymbolProvider $symbolProvider,
+        private readonly PhpSymbolProviderInterface $symbolProvider,
         private readonly CodegenSettings $settings
     ) {}
 
@@ -223,13 +223,13 @@ final class TypeRegistryGenerator
                 continue;
             }
 
-            $category = $this->model->categorizeShape($shapeId);
-            $shortClass = $this->symbolProvider->toShortClassName($shapeId);
-            $classFqcn = $this->settings->resolveNamespace($category)
-                . '\\'
-                . $shortClass;
-
-            $entries[] = ['shapeId' => $shapeId, 'classFqcn' => $classFqcn];
+            $entries[] = [
+                'shapeId' => $shapeId,
+                'classFqcn' => \ltrim(
+                    $this->symbolProvider->toClassName($shapeId),
+                    '\\'
+                )
+            ];
         }
 
         // Deterministic output: shape IDs are the natural sort key and

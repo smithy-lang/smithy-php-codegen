@@ -6,7 +6,7 @@ namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Model\SmithyModel;
-use Smithy\Codegen\PhpSymbolProvider;
+use Smithy\Codegen\PhpSymbolProviderInterface;
 use Smithy\Codegen\PriorCodegenEvaluator;
 use Smithy\Codegen\Writer\PhpCodeWriter;
 
@@ -100,7 +100,7 @@ final class SchemasGenerator
      */
     public function __construct(
         private readonly SmithyModel $model,
-        private readonly PhpSymbolProvider $symbolProvider,
+        private readonly PhpSymbolProviderInterface $symbolProvider,
         private readonly CodegenSettings $settings,
         /**
          * Prior-generation evaluator. When non-null (regeneration

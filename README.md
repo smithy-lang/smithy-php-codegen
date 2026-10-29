@@ -83,6 +83,57 @@ $settings = new CodegenSettings(
 (new CodeGenerator($settings, $model))->generateAndWrite();
 ```
 
+## Integrations
+
+Installed packages can extend code generation without replacing the generic
+orchestrator. Integrations can preprocess the model, customize settings,
+decorate symbol resolution, and contribute additional generated files.
+
+```php
+use Smithy\Codegen\CodegenContext;
+use Smithy\Codegen\Integration\AbstractCodegenIntegration;
+
+final class ExampleIntegration extends AbstractCodegenIntegration
+{
+    public function generateAdditionalFiles(CodegenContext $context): iterable
+    {
+        // Yield GeneratedFile instances beneath the configured output root.
+        return [];
+    }
+}
+```
+
+Programmatic callers pass integration instances to `CodeGenerator`:
+
+```php
+new CodeGenerator($settings, $model, [new ExampleIntegration()]);
+```
+
+The CLI can instantiate Composer-autoloadable integrations from configuration:
+
+```json
+{
+    "namespace": "Example\\Weather",
+    "outputDir": "generated",
+    "integrations": [
+        {
+            "class": "Vendor\\Codegen\\ExampleIntegration",
+            "settings": {
+                "exampleOption": true
+            }
+        }
+    ]
+}
+```
+
+Integration classes are trusted build-time code. They must have a public
+zero-argument constructor. Integrations are ordered deterministically using
+their names, priorities, and `runBefore()` or `runAfter()` dependencies.
+Duplicate names, dependency cycles, and generated-path collisions are rejected.
+Symbol-provider decorators may customize type mappings, short class names, and
+property names, but generated classes remain in the namespaces selected by
+codegen settings.
+
 ## Generated Output
 
 The generator emits the enabled artifacts:

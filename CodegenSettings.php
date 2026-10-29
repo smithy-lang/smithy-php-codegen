@@ -245,6 +245,56 @@ final class CodegenSettings
     }
 
     /**
+     * Return these settings as canonical configuration values.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'namespace' => $this->namespace,
+            'outputDir' => $this->outputDir,
+            'organization' => $this->organization,
+            'subNamespaces' => $this->subNamespaces,
+            'arrayAccess' => $this->arrayAccess,
+            'baseServiceException' => $this->baseServiceException,
+            'serviceExceptionClass' => $this->serviceExceptionClass,
+            'rulesFunctions' => $this->rulesFunctions,
+            'extendedOpcodes' => $this->extendedOpcodes,
+            'preserveExistingMemberOrder' =>
+                $this->preserveExistingMemberOrder,
+            'generateEndpointKeyBuilder' =>
+                $this->generateEndpointKeyBuilder,
+            'operationConstants' => $this->operationConstants,
+            'clientBaseClass' => $this->clientBaseClass,
+            'generateClient' => $this->generateClient,
+            'generateClientConfig' => $this->generateClientConfig,
+            'shapeConstants' => $this->shapeConstants,
+            'errorDiscriminators' => $this->errorDiscriminators,
+            'schemaTraitIndices' => $this->schemaTraitIndices,
+            'operationSchemaTraits' => $this->operationSchemaTraits,
+            'waiterResourceInitialisms' =>
+                $this->waiterResourceInitialisms,
+            'assumeAsciiEndpointStrings' =>
+                $this->assumeAsciiEndpointStrings,
+            'clientConfigClass' => $this->clientConfigClass
+        ];
+    }
+
+    /**
+     * Return a validated copy with canonical configuration overrides.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    public function copyWith(array $overrides): self
+    {
+        return self::fromArray([
+            ...$this->toArray(),
+            ...$overrides
+        ]);
+    }
+
+    /**
      * Resolve the namespace for a shape category.
      */
     public function resolveNamespace(ShapeCategory $category): string

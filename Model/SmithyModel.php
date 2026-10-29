@@ -31,6 +31,9 @@ final class SmithyModel
     /** @var array<string, mixed> Full model metadata */
     private array $metadata;
 
+    /** Smithy version declared by the JSON AST. */
+    private string $smithyVersion;
+
     /** @var array<string, string> Shape ID => operation role ('input' or 'output') */
     private array $operationRoles = [];
 
@@ -43,8 +46,12 @@ final class SmithyModel
     /** @var array<string, string> Input shape ID => pagination page-size member */
     private array $paginationPageSizeMembers = [];
 
-    private function __construct(array $shapes, array $metadata)
-    {
+    private function __construct(
+        string $smithyVersion,
+        array $shapes,
+        array $metadata
+    ) {
+        $this->smithyVersion = $smithyVersion;
         $this->shapes = $shapes;
         $this->metadata = $metadata;
         $this->indexOperationRoles();
@@ -86,6 +93,18 @@ final class SmithyModel
     {
         $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
 
+        return self::fromArray($data);
+    }
+
+    /**
+     * Load a Smithy model from a decoded JSON AST.
+     *
+     * @param mixed $data Decoded JSON AST
+     * @return self
+     * @throws \RuntimeException If the model is invalid
+     */
+    public static function fromArray(mixed $data): self
+    {
         if (!\is_array($data) || \array_is_list($data)) {
             throw new \RuntimeException(
                 'Invalid Smithy model: root must be an object'
@@ -115,7 +134,25 @@ final class SmithyModel
             );
         }
 
-        return new self($shapes, $metadata);
+        return new self($data['smithy'], $shapes, $metadata);
+    }
+
+    /**
+     * Return the decoded JSON AST represented by this model.
+     *
+     * @return array{
+     *     smithy: string,
+     *     metadata: array<string, mixed>,
+     *     shapes: array<string, array<string, mixed>>
+     * }
+     */
+    public function toArray(): array
+    {
+        return [
+            'smithy' => $this->smithyVersion,
+            'metadata' => $this->metadata,
+            'shapes' => $this->shapes
+        ];
     }
 
     /**

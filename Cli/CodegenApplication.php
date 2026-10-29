@@ -6,6 +6,8 @@ namespace Smithy\Codegen\Cli;
 
 use Smithy\Codegen\CodeGenerator;
 use Smithy\Codegen\CodegenSettings;
+use Smithy\Codegen\Integration\CodegenIntegrationInterface;
+use Smithy\Codegen\Integration\CodegenIntegrationLoader;
 use Smithy\Codegen\Model\SmithyModel;
 
 /**
@@ -76,20 +78,24 @@ final class CodegenApplication
 
             $modelPath = $arguments['model'];
             $this->validateReadableFile($modelPath, 'Model');
-            $settings = $this->loadSettings($arguments['options']);
+            [$settings, $integrations] = $this->loadSettings(
+                $arguments['options']
+            );
             $this->write(
                 $this->stdout,
                 "Loading Smithy model from: {$modelPath}\n"
             );
             $model = SmithyModel::fromFile($modelPath);
-            $count = (new CodeGenerator(
+            $generator = new CodeGenerator(
                 $settings,
-                $model
-            ))->generateAndWrite();
+                $model,
+                $integrations
+            );
+            $count = $generator->generateAndWrite();
             $this->write(
                 $this->stdout,
                 "Generated {$count} PHP file(s) in: "
-                    . "{$settings->outputDir}\n"
+                    . "{$generator->getSettings()->outputDir}\n"
             );
 
             return self::SUCCESS;
@@ -280,8 +286,13 @@ final class CodegenApplication
 
     /**
      * @param array<string, string|true> $options
+     *
+     * @return array{
+     *     CodegenSettings,
+     *     list<CodegenIntegrationInterface>
+     * }
      */
-    private function loadSettings(array $options): CodegenSettings
+    private function loadSettings(array $options): array
     {
         if (isset($options['config'])) {
             $directOptions = \array_diff_key(
@@ -326,8 +337,18 @@ final class CodegenApplication
                 );
             }
 
+            $integrationDefinitions = $config['integrations'] ?? [];
+            unset($config['integrations']);
+
             try {
-                return CodegenSettings::fromArray($config);
+                $settings = CodegenSettings::fromArray($config);
+
+                return [
+                    $settings,
+                    (new CodegenIntegrationLoader())->load(
+                        $integrationDefinitions
+                    )
+                ];
             } catch (\TypeError $exception) {
                 throw new \InvalidArgumentException(
                     'Config file contains an invalid setting type',
@@ -350,25 +371,30 @@ final class CodegenApplication
             );
         }
 
-        return new CodegenSettings(
-            namespace: $namespace,
-            outputDir: $outputDirectory,
-            organization: (string) (
-                $options['organization'] ?? 'categorized'
+        return [
+            new CodegenSettings(
+                namespace: $namespace,
+                outputDir: $outputDirectory,
+                organization: (string) (
+                    $options['organization'] ?? 'categorized'
+                ),
+                operationSet: $this->parseOperationSet(
+                    $options['operations'] ?? null
+                ),
+                arrayAccess: $this->parseArrayAccess(
+                    $options['array-access'] ?? null
+                ),
+                baseServiceException: isset($options['base-exception'])
+                    ? (string) $options['base-exception']
+                    : null,
+                serviceExceptionClass: isset(
+                    $options['service-exception']
+                )
+                    ? (string) $options['service-exception']
+                    : null
             ),
-            operationSet: $this->parseOperationSet(
-                $options['operations'] ?? null
-            ),
-            arrayAccess: $this->parseArrayAccess(
-                $options['array-access'] ?? null
-            ),
-            baseServiceException: isset($options['base-exception'])
-                ? (string) $options['base-exception']
-                : null,
-            serviceExceptionClass: isset($options['service-exception'])
-                ? (string) $options['service-exception']
-                : null
-        );
+            []
+        ];
     }
 
     /**

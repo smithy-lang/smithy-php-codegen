@@ -7,7 +7,7 @@ namespace Smithy\Codegen\Generator;
 use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Model\SensitiveShapeDetector;
 use Smithy\Codegen\Model\SmithyModel;
-use Smithy\Codegen\PhpSymbolProvider;
+use Smithy\Codegen\PhpSymbolProviderInterface;
 use Smithy\Codegen\PriorCodegenEvaluator;
 use Smithy\Codegen\ShapeCategory;
 use Smithy\Codegen\Writer\PhpCodeWriter;
@@ -43,7 +43,7 @@ final class StructureGenerator
      */
     public function __construct(
         private readonly SmithyModel $model,
-        private readonly PhpSymbolProvider $symbolProvider,
+        private readonly PhpSymbolProviderInterface $symbolProvider,
         private readonly CodegenSettings $settings,
         /**
          * Prior-generation evaluator that surfaces historical member
@@ -78,7 +78,7 @@ final class StructureGenerator
         }
 
         // Error-shape names already carry the `Exception` suffix at
-        // this layer - {@see PhpSymbolProvider::toShortClassName()}
+        // this layer. PhpSymbolProviderInterface::toShortClassName()
         // owns that rule so every generator produces the same name.
         $className = $this->symbolProvider->toShortClassName($shapeId);
         $category = $this->model->categorizeShape($shapeId);
@@ -2920,7 +2920,7 @@ final class StructureGenerator
             $propertyName = $this->symbolProvider->toPropertyName(
                 $memberName
             );
-            if ($propertyName === 'message') {
+            if (\lcfirst($memberName) === 'message') {
                 return $propertyName;
             }
         }

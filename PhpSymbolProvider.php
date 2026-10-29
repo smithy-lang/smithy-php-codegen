@@ -12,7 +12,7 @@ use Smithy\Codegen\Model\SmithyModel;
  * This is the PHP equivalent of smithy-java's JavaSymbolProvider - it resolves
  * Smithy types into PHP type strings used in generated code.
  */
-final class PhpSymbolProvider
+final class PhpSymbolProvider implements PhpSymbolProviderInterface
 {
     /**
      * PHP keywords, compile-time constants, and reserved type names that

@@ -6,7 +6,7 @@ namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Model\SmithyModel;
-use Smithy\Codegen\PhpSymbolProvider;
+use Smithy\Codegen\PhpSymbolProviderInterface;
 use Smithy\Codegen\ServiceProjection;
 use Smithy\Codegen\Writer\PhpCodeWriter;
 
@@ -116,7 +116,7 @@ final class ClientGenerator
      */
     public function __construct(
         private readonly SmithyModel $model,
-        private readonly PhpSymbolProvider $symbolProvider,
+        private readonly PhpSymbolProviderInterface $symbolProvider,
         private readonly CodegenSettings $settings
     ) {}
 
