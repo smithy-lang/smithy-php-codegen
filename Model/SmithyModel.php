@@ -334,6 +334,8 @@ final class SmithyModel
     /**
      * Normalize waiters in a service closure and validate unique names.
      *
+     * @param list<string> $operationShapeIds Selected service operations.
+     *
      * @return array<string, array<string, array<string, mixed>>> Map from
      *                                                            operation shape ID to waiter-name
      *                                                            map.
@@ -341,14 +343,19 @@ final class SmithyModel
      * @throws \LogicException If waiter metadata is invalid.
      */
     public function getValidatedServiceWaiters(
-        string $serviceShapeId
-    ): array
-    {
+        string $serviceShapeId,
+        array $operationShapeIds
+    ): array {
+        $serviceOperationIds = $this->getServiceOperationIds($serviceShapeId);
         $waitersByOperation = [];
 
-        foreach ($this->getServiceOperationIds($serviceShapeId)
-            as $operationShapeId
-        ) {
+        foreach ($operationShapeIds as $operationShapeId) {
+            if (!\in_array($operationShapeId, $serviceOperationIds, true)) {
+                throw new \InvalidArgumentException(
+                    "Operation {$operationShapeId} is not bound to service "
+                    . "{$serviceShapeId}."
+                );
+            }
             $waiters = $this->getValidatedWaiters($operationShapeId);
             if ($waiters === []) {
                 continue;

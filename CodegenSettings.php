@@ -66,6 +66,8 @@ final class CodegenSettings
      * @param string|null $serviceExceptionClass Service exception class to
      *     generate. Its short name is emitted in the configured error
      *     namespace.
+     * @param list<string>|null $operationSet Operation names or shape IDs
+     *     included in a trimmed client. Null generates every operation.
      */
     public function __construct(
         public readonly string $namespace,
@@ -100,7 +102,8 @@ final class CodegenSettings
         public readonly array $operationSchemaTraits = [],
         public readonly array $waiterResourceInitialisms = [],
         public readonly bool $assumeAsciiEndpointStrings = false,
-        ?string $clientConfigClass = null
+        ?string $clientConfigClass = null,
+        public readonly ?array $operationSet = null
     ) {
         $this->clientConfigClass = $clientConfigClass
             ?? self::DEFAULT_CLIENT_CONFIG_CLASS;
@@ -236,7 +239,8 @@ final class CodegenSettings
                 'clientConfigClass',
                 'client_config_class',
                 null
-            )
+            ),
+            operationSet: $config['operationSet'] ?? null
         );
     }
 
@@ -432,6 +436,7 @@ final class CodegenSettings
         );
         $this->validateRulesFunctions();
         $this->validateExtendedOpcodes();
+        $this->validateOperationSet();
         $this->validateConstantMaps(
             $this->operationConstants,
             'operationConstants'
@@ -558,6 +563,42 @@ final class CodegenSettings
                     'extendedOpcodes must map names to byte values'
                 );
             }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    private function validateOperationSet(): void
+    {
+        if ($this->operationSet === null) {
+            return;
+        }
+        if (!\array_is_list($this->operationSet)
+            || $this->operationSet === []
+        ) {
+            throw new \InvalidArgumentException(
+                'operationSet must be a non-empty list'
+            );
+        }
+
+        $seen = [];
+        foreach ($this->operationSet as $operation) {
+            if (!\is_string($operation)
+                || $operation === ''
+                || \trim($operation) !== $operation
+            ) {
+                throw new \InvalidArgumentException(
+                    'operationSet must contain non-empty operation names '
+                        . 'or shape IDs'
+                );
+            }
+            if (isset($seen[$operation])) {
+                throw new \InvalidArgumentException(
+                    "operationSet contains duplicate entry {$operation}"
+                );
+            }
+            $seen[$operation] = true;
         }
     }
 
@@ -788,6 +829,7 @@ final class CodegenSettings
             'preserve_existing_member_order',
             'generateEndpointKeyBuilder',
             'generate_endpoint_key_builder',
+            'operationSet',
             'operationConstants',
             'operation_constants',
             'clientBaseClass',

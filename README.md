@@ -24,14 +24,39 @@ The `categorized` organization writes inputs, outputs, operations, errors,
 and shared shapes into separate subdirectories. The `flat` organization
 writes generated classes directly under the configured namespace.
 
+Pass a comma-separated operation set to generate a statically typed client
+containing only those operations and their transitive dependencies:
+
+```shell
+vendor/bin/smithy-php-codegen model.json \
+    --namespace='Example\Weather' \
+    --output=generated \
+    --operations=GetForecast,ListForecasts
+```
+
 A JSON configuration file supplies generator settings:
 
 ```shell
 vendor/bin/smithy-php-codegen model.json --config=codegen.json
 ```
 
-For example, an SDK can configure both the generated service exception and
-its parent:
+The equivalent JSON setting is:
+
+```json
+{
+    "namespace": "Example\\Weather",
+    "outputDir": "generated",
+    "operationSet": [
+        "GetForecast",
+        "ListForecasts"
+    ]
+}
+```
+
+Entries may be operation names or fully-qualified Smithy shape IDs. Omitting
+`operationSet` generates the complete client.
+
+An SDK can also configure both the generated service exception and its parent:
 
 ```json
 {

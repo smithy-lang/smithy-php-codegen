@@ -135,14 +135,22 @@ final class CodeGenerator
      */
     public function generate(): array
     {
-        $this->validateServiceCount();
+        $projection = ServiceProjection::fromModel(
+            $this->model,
+            $this->settings->operationSet
+        );
 
+        return $this->generateProjection($projection);
+    }
+
+    /**
+     * @return GeneratedFile[]
+     */
+    private function generateProjection(ServiceProjection $projection): array
+    {
         $generatedFiles = [];
         $serviceException = null;
-
-        // Build the service closure - all shapes reachable from service
-        // operations
-        $serviceClosure = $this->buildServiceClosure();
+        $serviceClosure = $projection->shapeIds;
 
         // Generate structures
         foreach ($this->model->getStructureShapes() as $shapeId => $shape) {
@@ -196,7 +204,10 @@ final class CodeGenerator
                 continue;
             }
 
-            $generatedFiles[] = $this->serviceGenerator->generate($shapeId);
+            $generatedFiles[] = $this->serviceGenerator->generate(
+                $shapeId,
+                $projection
+            );
             $serviceException =
                 $this->serviceExceptionGenerator->generate();
             $generatedFiles[] = $serviceException;
@@ -217,7 +228,10 @@ final class CodeGenerator
             }
 
             if ($this->settings->generateClient) {
-                $generatedFiles[] = $this->clientGenerator->generate($shapeId);
+                $generatedFiles[] = $this->clientGenerator->generate(
+                    $shapeId,
+                    $projection
+                );
             }
 
             if ($this->settings->generateClientConfig) {
@@ -246,7 +260,7 @@ final class CodeGenerator
         }
 
         // Generate Unit class if any operation references smithy.api#Unit
-        if ($this->hasUnitReference()) {
+        if ($projection->usesUnit) {
             $generatedFiles[] = $this->generateUnit();
         }
 
@@ -297,112 +311,6 @@ final class CodeGenerator
     }
 
     /**
-     * Build the set of shape IDs reachable from the service (its closure).
-     * Only shapes in this set are generated.
-     *
-     * @return array<string, true> Set of shape IDs to generate
-     */
-    private function buildServiceClosure(): array
-    {
-        $closure = [];
-        $queue = [];
-
-        // Start with every operation in each service closure.
-        $hasService = false;
-        foreach ($this->model->getServiceShapes() as $serviceId => $_) {
-            $hasService = true;
-            foreach ($this->model->getServiceOperationIds($serviceId)
-                as $operationId
-            ) {
-                $queue[] = $operationId;
-            }
-        }
-
-        // No service shape in the model - the codegen test fixtures (and
-        // service-less standalone-shape models) seed the closure with every
-        // declared non-prelude shape so the generators see the whole graph.
-        // The walk below still prunes mixin/prelude refs as usual.
-        if (!$hasService) {
-            foreach ($this->model->getShapes() as $shapeId => $_) {
-                if (!str_starts_with($shapeId, 'smithy.api#')) {
-                    $queue[] = $shapeId;
-                }
-            }
-        }
-
-        // Walk the graph breadth-first
-        while ($queue !== []) {
-            $shapeId = array_pop($queue);
-
-            if (isset($closure[$shapeId])
-                || str_starts_with($shapeId, 'smithy.api#')
-            ) {
-                continue;
-            }
-
-            $closure[$shapeId] = true;
-
-            $shape = $this->model->getShape($shapeId);
-            if ($shape === null) {
-                continue;
-            }
-
-            // Enqueue referenced shapes based on type
-            $type = $shape['type'] ?? '';
-
-            // Operation -> input, output, errors
-            if ($type === 'operation') {
-                if (isset($shape['input']['target'])) {
-                    $queue[] = $shape['input']['target'];
-                }
-                if (isset($shape['output']['target'])) {
-                    $queue[] = $shape['output']['target'];
-                }
-                foreach ($shape['errors'] ?? [] as $err) {
-                    if (isset($err['target'])) {
-                        $queue[] = $err['target'];
-                    }
-                }
-            }
-
-            // Structure/union -> member targets
-            if ($type === 'structure' || $type === 'union') {
-                foreach ($shape['members'] ?? [] as $memberDef) {
-                    if (isset($memberDef['target'])) {
-                        $queue[] = $memberDef['target'];
-                    }
-                    // Also follow mixin targets
-                }
-                // Follow mixins
-                foreach ($shape['mixins'] ?? [] as $mixin) {
-                    if (isset($mixin['target'])) {
-                        $queue[] = $mixin['target'];
-                    }
-                }
-            }
-
-            // List -> member target
-            if ($type === 'list') {
-                if (isset($shape['member']['target'])) {
-                    $queue[] = $shape['member']['target'];
-                }
-            }
-
-            // Map -> key + value targets
-            if ($type === 'map') {
-                if (isset($shape['key']['target'])) {
-                    $queue[] = $shape['key']['target'];
-                }
-                if (isset($shape['value']['target'])) {
-                    $queue[] = $shape['value']['target'];
-                }
-            }
-        }
-
-        return $closure;
-    }
-
-    /**
      * Determine if a shape should be generated.
      */
     private function shouldGenerateShape(
@@ -423,43 +331,6 @@ final class CodeGenerator
         }
 
         return true;
-    }
-
-    /**
-     * Check if any operation references smithy.api#Unit as input or output.
-     */
-    private function hasUnitReference(): bool
-    {
-        foreach ($this->model->getOperationShapes() as $shape) {
-            $inputTarget = $shape['input']['target'] ?? null;
-            $outputTarget = $shape['output']['target'] ?? null;
-            if ($inputTarget === null
-                || $outputTarget === null
-                || $inputTarget === 'smithy.api#Unit'
-                || $outputTarget === 'smithy.api#Unit'
-            ) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private function validateServiceCount(): void
-    {
-        $serviceIds = [];
-        foreach ($this->model->getServiceShapes() as $shapeId => $_) {
-            if (!\str_starts_with($shapeId, 'smithy.api#')) {
-                $serviceIds[] = $shapeId;
-            }
-        }
-        if (\count($serviceIds) <= 1) {
-            return;
-        }
-
-        throw new \InvalidArgumentException(
-            'Code generation requires at most one service shape; found: '
-                . \implode(', ', $serviceIds)
-        );
     }
 
     /**

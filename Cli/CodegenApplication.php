@@ -22,6 +22,7 @@ final class CodegenApplication
         'base-exception',
         'config',
         'namespace',
+        'operations',
         'organization',
         'output',
         'service-exception'
@@ -355,6 +356,9 @@ final class CodegenApplication
             organization: (string) (
                 $options['organization'] ?? 'categorized'
             ),
+            operationSet: $this->parseOperationSet(
+                $options['operations'] ?? null
+            ),
             arrayAccess: $this->parseArrayAccess(
                 $options['array-access'] ?? null
             ),
@@ -388,6 +392,21 @@ final class CodegenApplication
             'enabled' => true,
             'categories' => $categories
         ];
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private function parseOperationSet(string|true|null $value): ?array
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return \array_map(
+            'trim',
+            \explode(',', (string) $value)
+        );
     }
 
     /**
@@ -435,6 +454,7 @@ Options:
   --namespace=<ns>       Base PHP namespace
   --output=<dir>, -o     Output directory
   --organization=<org>   "categorized" or "flat"
+  --operations=<names>   Comma-separated operation names or shape IDs
   --array-access=<cats>  Comma-separated shape categories
   --base-exception=<fqcn>
                          Parent of the generated service exception

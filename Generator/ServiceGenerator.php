@@ -6,6 +6,7 @@ namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Model\SmithyModel;
+use Smithy\Codegen\ServiceProjection;
 use Smithy\Codegen\Writer\PhpCodeWriter;
 
 /**
@@ -30,7 +31,10 @@ final class ServiceGenerator
      * @param string $shapeId Fully-qualified service shape ID
      * @return GeneratedFile
      */
-    public function generate(string $shapeId): GeneratedFile
+    public function generate(
+        string $shapeId,
+        ServiceProjection $projection
+    ): GeneratedFile
     {
         $shape = $this->model->getShape($shapeId);
         if ($shape === null) {
@@ -61,7 +65,8 @@ final class ServiceGenerator
         // Import operation classes
         $operationsNamespace = $this->settings->resolveOperationsNamespace();
         $operationImports = [];
-        $operationIds = $this->model->getServiceOperationIds($shapeId);
+        $projection->requireService($shapeId);
+        $operationIds = $projection->operationIds;
         foreach ($operationIds as $operationId) {
             $opName = SmithyModel::getShapeName($operationId);
             $opClassName = $opName . 'Operation';
