@@ -463,13 +463,26 @@ final class SchemasGenerator
         // (ArrayShapeSerializer::fromArray reads it to recurse into nested
         // struct/union members and ::fromValue() on nested enums).
         $targetClassStr = $this->buildTargetClassParam($targetId, $targetType);
+        $phpName = $this->buildPhpNameParam($memberName);
 
         return "new Schema(id: '{$targetId}', "
             . "type: {$shapeTypeEnum}, "
             . "memberName: '{$memberName}', "
-            . "memberIndex: {$index}"
+            . "memberIndex: {$index}{$phpName}"
             . "{$unionMembers}{$collectionParams}{$traitsStr}"
             . "{$traitsByIdStr}{$directTraitsByIdStr}{$targetClassStr})";
+    }
+
+    /**
+     * Build the optional generated PHP member-name parameter.
+     */
+    private function buildPhpNameParam(string $memberName): string
+    {
+        $phpName = $this->symbolProvider->toPropertyName($memberName);
+
+        return $phpName === \lcfirst($memberName)
+            ? ''
+            : ", phpName: '{$phpName}'";
     }
 
     /**
@@ -915,10 +928,11 @@ final class SchemasGenerator
                 $memTargetId,
                 $memTargetType
             );
+            $phpName = $this->buildPhpNameParam($memberName);
             $parts[] = "new Schema(id: '{$memTargetId}', "
                 . "type: {$memTypeEnum}, "
                 . "memberName: '{$memberName}', "
-                . "memberIndex: {$index}"
+                . "memberIndex: {$index}{$phpName}"
                 . "{$memCollectionParams}{$memTraitsStr}"
                 . "{$memTraitsByIdStr}{$memDirectTraitsByIdStr}"
                 . "{$targetClassStr})";
