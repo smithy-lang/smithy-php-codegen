@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 declare(strict_types=1);
 
 namespace Smithy\Codegen\Generator;
@@ -78,6 +83,12 @@ final class EndpointKeyBuilderGenerator
 
         $lines = [];
         $lines[] = '<?php';
+        $lines[] = '';
+        $lines[] = '/*';
+        $lines[] = ' * Copyright Amazon.com, Inc. or its affiliates.'
+            . ' All Rights Reserved.';
+        $lines[] = ' * SPDX-License-Identifier: Apache-2.0';
+        $lines[] = ' */';
         $lines[] = '';
         $lines[] = 'declare(strict_types=1);';
         $lines[] = '';

@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 declare(strict_types=1);
 
 namespace Smithy\Codegen\Writer;
@@ -318,6 +323,11 @@ final class PhpCodeWriter
     public function toFileContent(): string
     {
         $output = "<?php\n\n";
+        $output .= "/*\n";
+        $output .= ' * Copyright Amazon.com, Inc. or its affiliates.'
+            . " All Rights Reserved.\n";
+        $output .= " * SPDX-License-Identifier: Apache-2.0\n";
+        $output .= " */\n\n";
         $output .= "declare(strict_types=1);\n\n";
 
         if ($this->namespace !== '') {
