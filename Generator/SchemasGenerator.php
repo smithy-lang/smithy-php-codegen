@@ -434,6 +434,7 @@ final class SchemasGenerator
         int $index
     ): string
     {
+        $memberId = $parentShapeId . '$' . $memberName;
         $targetId = $memberDef['target'] ?? 'smithy.api#String';
         $targetType = $this->model->getShapeType($targetId) ?? 'string';
         $shapeTypeEnum = $this->smithyTypeToEnum($targetType);
@@ -470,7 +471,7 @@ final class SchemasGenerator
         $targetClassStr = $this->buildTargetClassParam($targetId, $targetType);
         $phpName = $this->buildPhpNameParam($memberName);
 
-        return "new Schema(id: '{$targetId}', "
+        return "new Schema(id: '{$memberId}', "
             . "type: {$shapeTypeEnum}, "
             . "memberName: '{$memberName}', "
             . "memberIndex: {$index}{$phpName}"
@@ -807,8 +808,9 @@ final class SchemasGenerator
                 $memberTarget,
                 $memberType
             );
+            $listMemberId = $targetId . '$member';
 
-            return ", listMember: new Schema(id: '{$memberTarget}', "
+            return ", listMember: new Schema(id: '{$listMemberId}', "
                 . "type: {$memberTypeEnum}, memberName: 'member', "
                 . "memberIndex: 0"
                 . "{$memberMembers}{$memberCollectionParams}"
@@ -864,12 +866,14 @@ final class SchemasGenerator
                 $valueTarget,
                 $valueType
             );
+            $mapKeyId = $targetId . '$key';
+            $mapValueId = $targetId . '$value';
 
-            return ", mapKey: new Schema(id: '{$keyTarget}', "
+            return ", mapKey: new Schema(id: '{$mapKeyId}', "
                 . "type: {$keyTypeEnum}, memberName: 'key', memberIndex: 0"
                 . "{$keyTraitsStr}"
                 . "{$keyTraitsByIdStr}{$keyDirectTraitsByIdStr}), "
-                . "mapValue: new Schema(id: '{$valueTarget}', "
+                . "mapValue: new Schema(id: '{$mapValueId}', "
                 . "type: {$valueTypeEnum}, memberName: 'value', "
                 . "memberIndex: 1"
                 . "{$valueMembers}{$valueCollectionParams}"
@@ -911,6 +915,7 @@ final class SchemasGenerator
         $parts = [];
         $index = 0;
         foreach ($members as $memberName => $memberDef) {
+            $memberId = $targetId . '$' . $memberName;
             $memTargetId = $memberDef['target'] ?? 'smithy.api#String';
             $memTargetType =
                 $this->model->getShapeType($memTargetId) ?? 'string';
@@ -934,7 +939,7 @@ final class SchemasGenerator
                 $memTargetType
             );
             $phpName = $this->buildPhpNameParam($memberName);
-            $parts[] = "new Schema(id: '{$memTargetId}', "
+            $parts[] = "new Schema(id: '{$memberId}', "
                 . "type: {$memTypeEnum}, "
                 . "memberName: '{$memberName}', "
                 . "memberIndex: {$index}{$phpName}"
