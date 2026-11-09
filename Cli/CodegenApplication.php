@@ -26,6 +26,7 @@ final class CodegenApplication
 
     private const VALUE_OPTIONS = [
         'array-access',
+        'array-serialization',
         'base-exception',
         'config',
         'namespace',
@@ -389,6 +390,9 @@ final class CodegenApplication
                 arrayAccess: $this->parseArrayAccess(
                     $options['array-access'] ?? null
                 ),
+                arraySerialization: $this->parseArraySerialization(
+                    $options['array-serialization'] ?? null
+                ),
                 baseServiceException: isset($options['base-exception'])
                     ? (string) $options['base-exception']
                     : null,
@@ -422,6 +426,29 @@ final class CodegenApplication
         return [
             'enabled' => true,
             'categories' => $categories
+        ];
+    }
+
+    /**
+     * @return array{enabled: bool, categories: list<string>}
+     */
+    private function parseArraySerialization(
+        string|true|null $value
+    ): array
+    {
+        if ($value === null) {
+            return [
+                'enabled' => false,
+                'categories' => ['all']
+            ];
+        }
+
+        return [
+            'enabled' => true,
+            'categories' => \array_map(
+                'trim',
+                \explode(',', (string) $value)
+            )
         ];
     }
 
@@ -487,6 +514,8 @@ Options:
   --organization=<org>   "categorized" or "flat"
   --operations=<names>   Comma-separated operation names or shape IDs
   --array-access=<cats>  Comma-separated shape categories
+  --array-serialization=<cats>
+                         Add toArray/fromArray to shape categories
   --base-exception=<fqcn>
                          Parent of the generated service exception
   --service-exception=<fqcn>

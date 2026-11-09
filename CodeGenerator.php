@@ -539,8 +539,9 @@ final class CodeGenerator
      */
     private function generateUnit(): GeneratedFile
     {
-        $namespace = $this->settings->resolveNamespace(ShapeCategory::Shape);
-        $outputDir = $this->settings->resolveOutputDir(ShapeCategory::Shape);
+        $category = ShapeCategory::Shape;
+        $namespace = $this->settings->resolveNamespace($category);
+        $outputDir = $this->settings->resolveOutputDir($category);
         $className = $this->symbolProvider->toShortClassName(
             'smithy.api#Unit'
         );
@@ -552,14 +553,45 @@ final class CodeGenerator
         $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
         $writer->addImport('Smithy\\Core\\Shape\\FromMembersTrait');
 
+        $withArrayAccess = $this->settings->shouldGenerateArrayAccess(
+            $category
+        );
+        $readonlyArrayAccessTrait = $withArrayAccess
+            ? $writer->addImportReference(
+                'Smithy\\Core\\Shape\\ReadonlyArrayAccessTrait',
+                'SmithyReadonlyArrayAccessTrait',
+                [$className]
+            )
+            : null;
+        $arraySerializableTrait =
+            $this->settings->shouldGenerateArraySerialization($category)
+                ? $writer->addImportReference(
+                    'Smithy\\Core\\Shape\\ArraySerializableTrait',
+                    'SmithyArraySerializableTrait',
+                    [$className]
+                )
+                : null;
+
+        $interfaces = ['SerializableStructInterface'];
+        if ($withArrayAccess) {
+            $interfaces[] = '\\ArrayAccess';
+        }
+
         $writer->writeDocBlock(
             ['The Unit type represents an empty input/output shape.']
         );
         $writer->writeClassDeclaration(
             "final class {$className}",
-            ['SerializableStructInterface']
+            $interfaces
         );
         $writer->openBlock('{');
+
+        if ($readonlyArrayAccessTrait !== null) {
+            $writer->writeLine("use {$readonlyArrayAccessTrait};");
+        }
+        if ($arraySerializableTrait !== null) {
+            $writer->writeLine("use {$arraySerializableTrait};");
+        }
 
         // fromMembers() comes from FromMembersTrait, shared with all
         // generated struct shapes. Unit inherits the same deserialization

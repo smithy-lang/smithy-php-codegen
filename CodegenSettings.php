@@ -29,7 +29,7 @@ final class CodegenSettings
         'flat'
     ];
 
-    private const ARRAY_ACCESS_CATEGORIES = [
+    private const ARRAY_TRAIT_CATEGORIES = [
         'all',
         'error',
         'input',
@@ -49,6 +49,7 @@ final class CodegenSettings
      *     endpoint: string
      * } $subNamespaces
      * @param array{enabled: bool, categories: list<string>} $arrayAccess
+     * @param array{enabled: bool, categories: list<string>} $arraySerialization
      * @param array<string, RulesFunctionInterface> $rulesFunctions
      * @param array<string, int> $extendedOpcodes
      * @param array<string, array<string, string>> $operationConstants
@@ -89,6 +90,10 @@ final class CodegenSettings
         public readonly array $arrayAccess = [
             'enabled' => false,
             'categories' => ['output']
+        ],
+        public readonly array $arraySerialization = [
+            'enabled' => false,
+            'categories' => ['all']
         ],
         public readonly ?string $baseServiceException = null,
         public readonly ?string $serviceExceptionClass = null,
@@ -160,6 +165,13 @@ final class CodegenSettings
                     'categories' => ['output']
                 ],
                 $config['arrayAccess'] ?? []
+            ),
+            arraySerialization: \array_merge(
+                [
+                    'enabled' => false,
+                    'categories' => ['all']
+                ],
+                $config['arraySerialization'] ?? []
             ),
             baseServiceException: $config['baseServiceException'] ?? null,
             serviceExceptionClass: $config['serviceExceptionClass'] ?? null,
@@ -262,6 +274,7 @@ final class CodegenSettings
             'organization' => $this->organization,
             'subNamespaces' => $this->subNamespaces,
             'arrayAccess' => $this->arrayAccess,
+            'arraySerialization' => $this->arraySerialization,
             'baseServiceException' => $this->baseServiceException,
             'serviceExceptionClass' => $this->serviceExceptionClass,
             'rulesFunctions' => $this->rulesFunctions,
@@ -432,16 +445,43 @@ final class CodegenSettings
      */
     public function shouldGenerateArrayAccess(ShapeCategory $category): bool
     {
-        if (!$this->arrayAccess['enabled']) {
+        return $this->shouldGenerateArrayTrait(
+            $this->arrayAccess,
+            $category
+        );
+    }
+
+    /**
+     * Check whether a shape category includes array conversion methods.
+     */
+    public function shouldGenerateArraySerialization(
+        ShapeCategory $category
+    ): bool
+    {
+        return $this->shouldGenerateArrayTrait(
+            $this->arraySerialization,
+            $category
+        );
+    }
+
+    /**
+     * @param array{enabled: bool, categories: list<string>} $setting
+     */
+    private function shouldGenerateArrayTrait(
+        array $setting,
+        ShapeCategory $category
+    ): bool
+    {
+        if (!$setting['enabled']) {
             return false;
         }
 
         $categoryName = \strtolower($category->name);
 
-        return \in_array('all', $this->arrayAccess['categories'], true)
+        return \in_array('all', $setting['categories'], true)
             || \in_array(
                 $categoryName,
-                $this->arrayAccess['categories'],
+                $setting['categories'],
                 true
             );
     }
@@ -464,7 +504,14 @@ final class CodegenSettings
         }
 
         $this->validateSubNamespaces();
-        $this->validateArrayAccess();
+        $this->validateArrayTraitSetting(
+            $this->arrayAccess,
+            'arrayAccess'
+        );
+        $this->validateArrayTraitSetting(
+            $this->arraySerialization,
+            'arraySerialization'
+        );
         $this->validateNullableClass(
             $this->baseServiceException,
             'baseServiceException'
@@ -543,10 +590,13 @@ final class CodegenSettings
     /**
      * @return void
      */
-    private function validateArrayAccess(): void
+    private function validateArrayTraitSetting(
+        array $setting,
+        string $name
+    ): void
     {
         $unknown = \array_diff(
-            \array_keys($this->arrayAccess),
+            \array_keys($setting),
             [
                 'enabled',
                 'categories'
@@ -554,21 +604,21 @@ final class CodegenSettings
         );
         if ($unknown !== []) {
             throw new \InvalidArgumentException(
-                'Unknown arrayAccess setting: ' . \reset($unknown)
+                "Unknown {$name} setting: " . \reset($unknown)
             );
         }
-        if (!isset($this->arrayAccess['enabled'])
-            || !\is_bool($this->arrayAccess['enabled'])
+        if (!isset($setting['enabled'])
+            || !\is_bool($setting['enabled'])
         ) {
             throw new \InvalidArgumentException(
-                'arrayAccess.enabled must be a bool'
+                "{$name}.enabled must be a bool"
             );
         }
 
-        $categories = $this->arrayAccess['categories'] ?? null;
+        $categories = $setting['categories'] ?? null;
         if (!\is_array($categories) || !\array_is_list($categories)) {
             throw new \InvalidArgumentException(
-                'arrayAccess.categories must be a list'
+                "{$name}.categories must be a list"
             );
         }
 
@@ -576,12 +626,12 @@ final class CodegenSettings
             if (!\is_string($category)
                 || !\in_array(
                     $category,
-                    self::ARRAY_ACCESS_CATEGORIES,
+                    self::ARRAY_TRAIT_CATEGORIES,
                     true
                 )
             ) {
                 throw new \InvalidArgumentException(
-                    'arrayAccess.categories contains an invalid category'
+                    "{$name}.categories contains an invalid category"
                 );
             }
         }
@@ -876,6 +926,7 @@ final class CodegenSettings
             'organization',
             'subNamespaces',
             'arrayAccess',
+            'arraySerialization',
             'baseServiceException',
             'serviceExceptionClass',
             'rulesFunctions',

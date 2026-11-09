@@ -170,9 +170,8 @@ final class StructureGenerator
         $withArrayAccess = $this->settings->shouldGenerateArrayAccess(
             $category
         );
-        if ($withArrayAccess) {
-            $writer->addImport('Smithy\\Core\\Shape\\ReadonlyArrayAccessTrait');
-        }
+        $withArraySerialization =
+            $this->settings->shouldGenerateArraySerialization($category);
 
         // Determine if this is an error shape
         $isError = $category === ShapeCategory::Error;
@@ -200,6 +199,21 @@ final class StructureGenerator
                 $writer->addImport($phpType->fqcn);
             }
         }
+
+        $readonlyArrayAccessTrait = $withArrayAccess
+            ? $writer->addImportReference(
+                'Smithy\\Core\\Shape\\ReadonlyArrayAccessTrait',
+                'SmithyReadonlyArrayAccessTrait',
+                [$className]
+            )
+            : null;
+        $arraySerializableTrait = $withArraySerialization
+            ? $writer->addImportReference(
+                'Smithy\\Core\\Shape\\ArraySerializableTrait',
+                'SmithyArraySerializableTrait',
+                [$className]
+            )
+            : null;
 
         // SensitiveStringableTrait provides redaction-aware string and debug
         // output. Emit it when this shape can transitively contain sensitive
@@ -274,8 +288,11 @@ final class StructureGenerator
 
         // Add trait uses. FromMembersTrait always emits because every
         // generated struct participates in the deserialization path.
-        if ($withArrayAccess) {
-            $writer->writeLine('use ReadonlyArrayAccessTrait;');
+        if ($readonlyArrayAccessTrait !== null) {
+            $writer->writeLine("use {$readonlyArrayAccessTrait};");
+        }
+        if ($arraySerializableTrait !== null) {
+            $writer->writeLine("use {$arraySerializableTrait};");
         }
         if ($withSensitiveStringable) {
             $writer->writeLine('use SensitiveStringableTrait;');
@@ -367,11 +384,6 @@ final class StructureGenerator
         // `fromMembers()` (the deserializer's positional sink) is provided
         // by `FromMembersTrait`, added to the `use` list above. No per-shape
         // codegen for it.
-
-
-        // Array conversion lives in the runtime serializer utility. Generated
-        // structures do not carry shape-local `toArray()` / `fromArray()`.
-
         // Close the class
         $writer->closeBlock();
 

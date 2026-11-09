@@ -56,6 +56,42 @@ The equivalent JSON setting is:
 Entries may be operation names or fully-qualified Smithy shape IDs. Omitting
 `operationSet` generates the complete client.
 
+Array compatibility APIs are disabled by default. Enable each API for one or
+more shape categories:
+
+```shell
+vendor/bin/smithy-php-codegen model.json \
+    --namespace='Example\Weather' \
+    --output=generated \
+    --array-access=output \
+    --array-serialization=all
+```
+
+`--array-access` adds read-only `ArrayAccess` through
+`ReadonlyArrayAccessTrait`. `--array-serialization` adds `fromArray()` and
+`toArray()` through `ArraySerializableTrait`. The array serialization methods
+delegate to `ArrayShapeSerializer`.
+
+Both options accept a comma-separated list containing `input`, `output`,
+`error`, or `shape`. Use `all` to select every structure category.
+
+The equivalent JSON settings are:
+
+```json
+{
+    "namespace": "Example\\Weather",
+    "outputDir": "generated",
+    "arrayAccess": {
+        "enabled": true,
+        "categories": ["output"]
+    },
+    "arraySerialization": {
+        "enabled": true,
+        "categories": ["all"]
+    }
+}
+```
+
 An SDK can also configure both the generated service exception and its parent:
 
 ```json
