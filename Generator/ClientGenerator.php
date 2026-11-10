@@ -134,49 +134,23 @@ final class ClientGenerator
         string $serviceShapeId,
         ServiceProjection $projection
     ): GeneratedFile {
-        $shape = $this->model->getShape($serviceShapeId);
-        if ($shape === null) {
-            throw new \InvalidArgumentException(
-                "Service not found: {$serviceShapeId}"
-            );
-        }
-        if (($shape['type'] ?? '') !== 'service') {
-            throw new \InvalidArgumentException(
-                "Shape {$serviceShapeId} is not a service"
-            );
-        }
-        $projection->requireService($serviceShapeId);
+        $operations = $this->operationsForService(
+            $serviceShapeId,
+            $projection
+        );
 
         $baseClass = $this->settings->clientBaseClass;
         $baseClassShort = $this->shortName($baseClass);
 
         $shortName = $this->clientShortName($serviceShapeId);
         $className = $shortName . 'Client';
+        $interfaceName = $className . 'Interface';
         $namespace = $this->settings->namespace;
         $outputDir = $this->settings->outputDir;
 
         $writer = new PhpCodeWriter($namespace);
         $writer->addImport($baseClass);
 
-        // Sort operations alphabetically by public method name for
-        // stable diffs across regenerations and alignment with
-        // smithy-java.
-        $operationIds = $projection->operationIds;
-        $waitersByOperation = $this->model->getValidatedServiceWaiters(
-            $serviceShapeId,
-            $operationIds
-        );
-        $operations = $this->collectOperations(
-            $operationIds,
-            $waitersByOperation
-        );
-        \usort(
-            $operations,
-            static fn(array $a, array $b): int => \strcmp(
-                $a['methodName'],
-                $b['methodName']
-            )
-        );
         if ($operations !== []) {
             $writer->addImport(self::REQUEST_OVERRIDE_CONFIG);
         }
@@ -217,7 +191,8 @@ final class ClientGenerator
         $writer->writeDocBlock($docLines);
 
         $writer->writeLine(
-            "final class {$className} extends {$baseClassShort}"
+            "final class {$className} extends {$baseClassShort} "
+                . "implements {$interfaceName}"
         );
         $writer->openBlock('{');
 
@@ -289,6 +264,102 @@ final class ClientGenerator
     }
 
     /**
+     * Generate the public client interface file for the given service.
+     *
+     * @param string $serviceShapeId Fully-qualified service shape ID.
+     */
+    public function generateInterface(
+        string $serviceShapeId,
+        ServiceProjection $projection
+    ): GeneratedFile {
+        $shortName = $this->clientShortName($serviceShapeId);
+        $interfaceName = $shortName . 'ClientInterface';
+        $namespace = $this->settings->namespace;
+        $outputDir = $this->settings->outputDir;
+
+        $operations = $this->operationsForService(
+            $serviceShapeId,
+            $projection
+        );
+
+        $writer = new PhpCodeWriter($namespace);
+        if ($operations !== []) {
+            $writer->addImport(self::REQUEST_OVERRIDE_CONFIG);
+        }
+        foreach ($operations as $op) {
+            if ($op['paginated']) {
+                $writer->addImport(self::PAGINATOR);
+            }
+            if ($op['waiters'] !== []) {
+                $writer->addImport(self::WAITER_CONFIG);
+                $writer->addImport(self::WAITER_FAILURE);
+                $writer->addImport(self::WAITER_RESULT);
+            }
+        }
+        foreach ($operations as &$op) {
+            $op['inputShort'] = $writer->addImportReference(
+                $op['inputFqcn'],
+                $op['inputShort'] . 'Shape',
+                [$interfaceName]
+            );
+            $op['outputShort'] = $writer->addImportReference(
+                $op['outputFqcn'],
+                $op['outputShort'] . 'Shape',
+                [$interfaceName]
+            );
+        }
+        unset($op);
+        $baseInterface = $writer->addImportReference(
+            $this->settings->clientBaseInterface,
+            'ConfiguredClientInterface',
+            [$interfaceName]
+        );
+
+        $writer->writeDocBlock([
+            "Public contract for the {$shortName} service client."
+        ]);
+        $writer->writeLine(
+            "interface {$interfaceName} extends {$baseInterface}"
+        );
+        $writer->openBlock('{');
+
+        $first = true;
+        foreach ($operations as $op) {
+            if (!$first) {
+                $writer->writeLine();
+            }
+            $first = false;
+            $this->writeOperationDeclaration($writer, $op, ';');
+            if ($op['paginated']) {
+                $writer->writeLine();
+                $this->writePaginatedOperationDeclaration(
+                    $writer,
+                    $op,
+                    ';'
+                );
+            }
+            foreach ($op['waiters'] as $waiterName => $waiter) {
+                $writer->writeLine();
+                $this->writeWaiterDeclaration(
+                    $writer,
+                    $op,
+                    $waiterName,
+                    $waiter,
+                    ';'
+                );
+            }
+        }
+
+        $writer->closeBlock();
+
+        $filePath = $outputDir
+            . DIRECTORY_SEPARATOR
+            . $interfaceName
+            . '.php';
+        return new GeneratedFile($filePath, $writer->toFileContent());
+    }
+
+    /**
      * Emit one `public function foo(...)` block into the writer.
      *
      * `$op` is one of the tuples returned by {@see collectOperations()}.
@@ -313,6 +384,34 @@ final class ClientGenerator
      */
     private function writeOperationMethod(PhpCodeWriter $writer, array $op): void
     {
+        $this->writeOperationDeclaration($writer, $op);
+        $writer->openBlock('{');
+        $writer->writeLine("/** @var {$op['outputShort']} */");
+        $writer->writeLine('return $this->executeOperation(');
+        $writer->pushIndent();
+        $writer->writeLine("{$op['operationShort']}::instance(),");
+        $inputArgument = $op['inputHasMembers']
+            ? '$input,'
+            : "\$input ?? new {$op['inputShort']}(),";
+        $writer->writeLine(
+            $inputArgument
+        );
+        $writer->writeLine('$overrides,');
+        $writer->popIndent();
+        $writer->writeLine(');');
+        $writer->closeBlock();
+    }
+
+    /**
+     * Emit an operation declaration with an optional line suffix.
+     *
+     * @param array<string, mixed> $op Operation metadata.
+     */
+    private function writeOperationDeclaration(
+        PhpCodeWriter $writer,
+        array $op,
+        string $suffix = ''
+    ): void {
         // A doc block per method - Smithy `@documentation` on the
         // operation is the canonical description. drop it in verbatim
         // after light cleanup so IDEs surface it without any codegen
@@ -338,23 +437,9 @@ final class ClientGenerator
             $writer,
             $op['methodName'],
             $parameters,
-            $op['outputShort']
+            $op['outputShort'],
+            $suffix
         );
-        $writer->openBlock('{');
-        $writer->writeLine("/** @var {$op['outputShort']} */");
-        $writer->writeLine('return $this->executeOperation(');
-        $writer->pushIndent();
-        $writer->writeLine("{$op['operationShort']}::instance(),");
-        $inputArgument = $op['inputHasMembers']
-            ? '$input,'
-            : "\$input ?? new {$op['inputShort']}(),";
-        $writer->writeLine(
-            $inputArgument
-        );
-        $writer->writeLine('$overrides,');
-        $writer->popIndent();
-        $writer->writeLine(');');
-        $writer->closeBlock();
     }
 
     /**
@@ -381,6 +466,31 @@ final class ClientGenerator
         array $op
     ): void
     {
+        $this->writePaginatedOperationDeclaration($writer, $op);
+        $writer->openBlock('{');
+        $writer->writeLine('return $this->createPaginator(');
+        $writer->pushIndent();
+        $writer->writeLine("{$op['operationShort']}::instance(),");
+        $writer->writeLine(
+            $op['inputHasMembers']
+                ? '$input'
+                : "\$input ?? new {$op['inputShort']}()"
+        );
+        $writer->popIndent();
+        $writer->writeLine(');');
+        $writer->closeBlock();
+    }
+
+    /**
+     * Emit a paginator declaration with an optional line suffix.
+     *
+     * @param array<string, mixed> $op Operation metadata.
+     */
+    private function writePaginatedOperationDeclaration(
+        PhpCodeWriter $writer,
+        array $op,
+        string $suffix = ''
+    ): void {
         $writer->writeDocBlock([
             "Create a paginator for {@see self::{$op['methodName']}()}.",
             '',
@@ -398,20 +508,9 @@ final class ClientGenerator
             $writer,
             $methodName,
             $parameters,
-            'Paginator'
+            'Paginator',
+            $suffix
         );
-        $writer->openBlock('{');
-        $writer->writeLine('return $this->createPaginator(');
-        $writer->pushIndent();
-        $writer->writeLine("{$op['operationShort']}::instance(),");
-        $writer->writeLine(
-            $op['inputHasMembers']
-                ? '$input'
-                : "\$input ?? new {$op['inputShort']}()"
-        );
-        $writer->popIndent();
-        $writer->writeLine(');');
-        $writer->closeBlock();
     }
 
     /**
@@ -429,6 +528,38 @@ final class ClientGenerator
         array $waiter
     ): void
     {
+        $this->writeWaiterDeclaration(
+            $writer,
+            $op,
+            $waiterName,
+            $waiter
+        );
+        $writer->openBlock('{');
+        $writer->writeLine('return $this->createWaiter(');
+        $writer->pushIndent();
+        $writer->writeLine("{$op['operationShort']}::instance(),");
+        $writer->writeLine(
+            self::renderString($waiterName) . ','
+        );
+        $writer->writeLine('$config');
+        $writer->popIndent();
+        $writer->writeLine(')->wait($input, $maxWaitTime);');
+        $writer->closeBlock();
+    }
+
+    /**
+     * Emit a waiter declaration with an optional line suffix.
+     *
+     * @param array<string, mixed> $op Operation metadata.
+     * @param array<string, mixed> $waiter Normalized waiter metadata.
+     */
+    private function writeWaiterDeclaration(
+        PhpCodeWriter $writer,
+        array $op,
+        string $waiterName,
+        array $waiter,
+        string $suffix = ''
+    ): void {
         $documentation = $waiter['documentation'];
         $docLines = [
             $documentation === null
@@ -456,24 +587,17 @@ final class ClientGenerator
         $writer->writeDocBlock($docLines);
 
         $methodName = 'waitUntil' . $waiterName;
-        $writer->writeLine("public function {$methodName}(");
-        $writer->pushIndent();
-        $writer->writeLine("{$op['inputShort']} \$input,");
-        $writer->writeLine('float $maxWaitTime,');
-        $writer->writeLine('?WaiterConfig $config = null');
-        $writer->popIndent();
-        $writer->writeLine('): WaiterResult');
-        $writer->openBlock('{');
-        $writer->writeLine('return $this->createWaiter(');
-        $writer->pushIndent();
-        $writer->writeLine("{$op['operationShort']}::instance(),");
-        $writer->writeLine(
-            self::renderString($waiterName) . ','
+        $this->writeMethodSignature(
+            $writer,
+            $methodName,
+            [
+                "{$op['inputShort']} \$input",
+                'float $maxWaitTime',
+                '?WaiterConfig $config = null'
+            ],
+            'WaiterResult',
+            $suffix
         );
-        $writer->writeLine('$config');
-        $writer->popIndent();
-        $writer->writeLine(')->wait($input, $maxWaitTime);');
-        $writer->closeBlock();
     }
 
     private static function renderString(string $value): string
@@ -560,12 +684,14 @@ final class ClientGenerator
         PhpCodeWriter $writer,
         string $methodName,
         array $parameters,
-        string $returnType
+        string $returnType,
+        string $suffix = ''
     ): void
     {
         $paramText = \implode(', ', $parameters);
         $singleLine =
-            "public function {$methodName}({$paramText}): {$returnType}";
+            "public function {$methodName}({$paramText}): "
+                . "{$returnType}{$suffix}";
         if (\strlen(self::METHOD_INDENT . $singleLine)
             <= self::MAX_METHOD_SIGNATURE_WIDTH
         ) {
@@ -582,7 +708,47 @@ final class ClientGenerator
             );
         }
         $writer->popIndent();
-        $writer->writeLine("): {$returnType}");
+        $writer->writeLine("): {$returnType}{$suffix}");
+    }
+
+    /**
+     * Resolve and sort the operations exposed by a generated client.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function operationsForService(
+        string $serviceShapeId,
+        ServiceProjection $projection
+    ): array {
+        $shape = $this->model->getShape($serviceShapeId);
+        if ($shape === null) {
+            throw new \InvalidArgumentException(
+                "Service not found: {$serviceShapeId}"
+            );
+        }
+        if (($shape['type'] ?? '') !== 'service') {
+            throw new \InvalidArgumentException(
+                "Shape {$serviceShapeId} is not a service"
+            );
+        }
+
+        $projection->requireService($serviceShapeId);
+        $operations = $this->collectOperations(
+            $projection->operationIds,
+            $this->model->getValidatedServiceWaiters(
+                $serviceShapeId,
+                $projection->operationIds
+            )
+        );
+        \usort(
+            $operations,
+            static fn(array $a, array $b): int => \strcmp(
+                $a['methodName'],
+                $b['methodName']
+            )
+        );
+
+        return $operations;
     }
 
     /**

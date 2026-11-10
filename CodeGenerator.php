@@ -272,6 +272,11 @@ final class CodeGenerator
             }
 
             if ($this->settings->generateClient) {
+                $generatedFiles[] =
+                    $this->clientGenerator->generateInterface(
+                        $shapeId,
+                        $projection
+                    );
                 $generatedFiles[] = $this->clientGenerator->generate(
                     $shapeId,
                     $projection

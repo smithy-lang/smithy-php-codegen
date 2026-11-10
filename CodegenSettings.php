@@ -21,6 +21,8 @@ final class CodegenSettings
         '/^\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$/D';
     private const DEFAULT_CLIENT_BASE_CLASS =
         'Smithy\\Client\\AbstractClient';
+    private const DEFAULT_CLIENT_BASE_INTERFACE =
+        'Smithy\\Client\\ClientInterface';
     private const DEFAULT_CLIENT_CONFIG_CLASS =
         'Smithy\\Client\\ClientConfig';
 
@@ -56,6 +58,8 @@ final class CodegenSettings
      * @param string $clientBaseClass Base class with an AbstractClient-
      *     compatible constructor accepting the configured client config
      *     class and PluginCollection.
+     * @param string $clientBaseInterface Parent interface implemented by
+     *     the generated service client interface.
      * @param array<string, array<string, string>> $shapeConstants
      * @param array<string, list<string>> $errorDiscriminators
      * @param array<string, int> $schemaTraitIndices
@@ -113,7 +117,9 @@ final class CodegenSettings
         public readonly array $waiterResourceInitialisms = [],
         public readonly bool $assumeAsciiEndpointStrings = false,
         ?string $clientConfigClass = null,
-        public readonly ?array $operationSet = null
+        public readonly ?array $operationSet = null,
+        public readonly string $clientBaseInterface =
+            self::DEFAULT_CLIENT_BASE_INTERFACE
     ) {
         $this->clientConfigClass = $clientConfigClass
             ?? self::DEFAULT_CLIENT_CONFIG_CLASS;
@@ -257,7 +263,13 @@ final class CodegenSettings
                 'client_config_class',
                 null
             ),
-            operationSet: $config['operationSet'] ?? null
+            operationSet: $config['operationSet'] ?? null,
+            clientBaseInterface: self::aliasedValue(
+                $config,
+                'clientBaseInterface',
+                'client_base_interface',
+                self::DEFAULT_CLIENT_BASE_INTERFACE
+            )
         );
     }
 
@@ -295,7 +307,8 @@ final class CodegenSettings
                 $this->waiterResourceInitialisms,
             'assumeAsciiEndpointStrings' =>
                 $this->assumeAsciiEndpointStrings,
-            'clientConfigClass' => $this->clientConfigClass
+            'clientConfigClass' => $this->clientConfigClass,
+            'clientBaseInterface' => $this->clientBaseInterface
         ];
     }
 
@@ -531,6 +544,10 @@ final class CodegenSettings
         self::requireClassName(
             $this->clientBaseClass,
             'clientBaseClass'
+        );
+        self::requireClassName(
+            $this->clientBaseInterface,
+            'clientBaseInterface'
         );
         self::requireClassName(
             $this->clientConfigClass,
@@ -940,6 +957,8 @@ final class CodegenSettings
             'operation_constants',
             'clientBaseClass',
             'client_base_class',
+            'clientBaseInterface',
+            'client_base_interface',
             'generateClient',
             'generate_client',
             'generateClientConfig',
