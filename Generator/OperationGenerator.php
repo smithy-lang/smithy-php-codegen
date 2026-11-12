@@ -910,9 +910,11 @@ final class OperationGenerator
             $fragments = [];
             foreach (\explode('&', $queryLiteral) as $pair) {
                 $parts = \explode('=', $pair, 2);
-                $fragments[] = \rawurlencode($parts[0])
-                    . '='
-                    . \rawurlencode($parts[1] ?? '');
+                $fragment = \rawurlencode($parts[0]);
+                if (isset($parts[1])) {
+                    $fragment .= '=' . \rawurlencode($parts[1]);
+                }
+                $fragments[] = $fragment;
             }
             $queryString = \str_replace(
                 "'",
