@@ -744,27 +744,6 @@ final class CodegenSettings
     }
 
     /**
-     * @param array<string, string> $values
-     *
-     * @return void
-     */
-    private function validateStringMap(array $values, string $name): void
-    {
-        foreach ($values as $key => $value) {
-            if (!\is_string($key)
-                || $key === ''
-                || !\is_string($value)
-                || $value === ''
-            ) {
-                throw new \InvalidArgumentException(
-                    "{$name} must map non-empty strings to non-empty strings"
-                );
-            }
-            self::requireClassName($value, "{$name}.{$key}");
-        }
-    }
-
-    /**
      * @param array<string, array<string, string>> $values
      *
      * @return void

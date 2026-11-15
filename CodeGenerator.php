@@ -239,10 +239,8 @@ final class CodeGenerator
         }
 
         // Generate service class(es) and their matching TypeRegistry.
-        // The registry maps every generated shape ID to its PHP class so
-        // the protocol layer and application code can resolve schemas
-        // from wire-side discriminators (e.g. restJson1 `__type`) without
-        // per-operation error lists.
+        // The registry maps every generated shape ID to its PHP class for
+        // application code. No runtime code reads it.
         foreach ($this->model->getServiceShapes() as $shapeId => $shape) {
             if (str_starts_with($shapeId, 'smithy.api#')) {
                 continue;

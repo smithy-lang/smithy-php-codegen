@@ -127,9 +127,6 @@ final class EnumGenerator
         );
         $writer->writeLine();
 
-        // Lazy-cached schema for the universal serialize() entry point.
-        $writer->writeLine('private static Schema $SCHEMA;');
-
         // Private static cache for known singletons
         $writer->writeLine('private static array $known = [];');
         $writer->writeLine();
@@ -234,7 +231,7 @@ final class EnumGenerator
         $writer->closeBlock();
         $writer->writeLine();
 
-        // EnumInterface::schema() - pulls the lazy-cached Schema from the
+        // EnumInterface::schema() - returns the Schema cached by the
         // centralized Schemas class. Used by the universal serialize()
         // entry point below and any consumer that needs the enum's own
         // schema (validators, type-stamping codecs).
@@ -242,9 +239,7 @@ final class EnumGenerator
         $writer->writeDocBlock(['Get the shape schema.']);
         $writer->writeLine('public static function schema(): Schema');
         $writer->openBlock('{');
-        $writer->writeLine(
-            "return self::\$SCHEMA ??= Schemas::{$schemaMethod}();"
-        );
+        $writer->writeLine("return Schemas::{$schemaMethod}();");
         $writer->closeBlock();
         $writer->writeLine();
 

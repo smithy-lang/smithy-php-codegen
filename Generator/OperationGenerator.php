@@ -77,23 +77,11 @@ final class OperationGenerator
         $inputTarget = $shape['input']['target'] ?? 'smithy.api#Unit';
         $outputTarget = $shape['output']['target'] ?? 'smithy.api#Unit';
 
-        $inputClass = null;
-        if ($inputTarget !== null) {
-            $inputClass = $this->symbolProvider->toShortClassName($inputTarget);
-            $writer->addImport(
-                $this->symbolProvider->toClassName($inputTarget)
-            );
-        }
+        $inputClass = $this->symbolProvider->toShortClassName($inputTarget);
+        $writer->addImport($this->symbolProvider->toClassName($inputTarget));
 
-        $outputClass = null;
-        if ($outputTarget !== null) {
-            $outputClass = $this->symbolProvider->toShortClassName(
-                $outputTarget
-            );
-            $writer->addImport(
-                $this->symbolProvider->toClassName($outputTarget)
-            );
-        }
+        $outputClass = $this->symbolProvider->toShortClassName($outputTarget);
+        $writer->addImport($this->symbolProvider->toClassName($outputTarget));
 
         // Resolve service and operation error classes.
         $serviceId = $this->resolveServiceIdForOperation($shapeId);
@@ -160,11 +148,6 @@ final class OperationGenerator
             'SmithyOperation',
             [$className]
         );
-        if ($inputClass === null || $outputClass === null) {
-            $writer->addImport(
-                'Smithy\\Core\\Shape\\Document\\StructDocument'
-            );
-        }
         $serviceExceptionClass = $writer->addImportReference(
             $serviceId === null
                 && $this->settings->serviceExceptionClass === null
@@ -185,18 +168,14 @@ final class OperationGenerator
         // The runtime reads it off the precomputed
         // {@see HttpStructBindingExtension::$idempotencyTokenMemberIndex},
         // so the autofill path doesn't traverse the operation object.
-        $inputStreamMember = $inputTarget !== null
-            ? $this->findMemberWithTargetTrait(
-                $inputTarget,
-                'smithy.api#streaming'
-            )
-            : null;
-        $outputStreamMember = $outputTarget !== null
-            ? $this->findMemberWithTargetTrait(
-                $outputTarget,
-                'smithy.api#streaming'
-            )
-            : null;
+        $inputStreamMember = $this->findMemberWithTargetTrait(
+            $inputTarget,
+            'smithy.api#streaming'
+        );
+        $outputStreamMember = $this->findMemberWithTargetTrait(
+            $outputTarget,
+            'smithy.api#streaming'
+        );
 
         // Documentation
         $documentation = $traits['smithy.api#documentation'] ?? null;
@@ -220,21 +199,10 @@ final class OperationGenerator
                 ? 'public const SERVICE_ID = null;'
                 : "public const SERVICE_ID = '{$serviceId}';"
         );
-        if ($inputClass !== null) {
-            $writer->writeLine(
-                "public const INPUT_CLASS = {$inputClass}::class;"
-            );
-        } else {
-            $writer->writeLine("public const INPUT_CLASS = '';");
-        }
-
-        if ($outputClass !== null) {
-            $writer->writeLine(
-                "public const OUTPUT_CLASS = {$outputClass}::class;"
-            );
-        } else {
-            $writer->writeLine("public const OUTPUT_CLASS = '';");
-        }
+        $writer->writeLine("public const INPUT_CLASS = {$inputClass}::class;");
+        $writer->writeLine(
+            "public const OUTPUT_CLASS = {$outputClass}::class;"
+        );
 
         $writer->writeLine('public const AUTH_SCHEMES = [');
         $writer->pushIndent();
@@ -327,17 +295,6 @@ final class OperationGenerator
         $writer->closeBlock();
         $writer->writeLine();
 
-        $writer->writeLine('public function getInputClass(): string');
-        $writer->openBlock('{');
-        $writer->writeLine('return self::INPUT_CLASS;');
-        $writer->closeBlock();
-        $writer->writeLine();
-
-        $writer->writeLine('public function getOutputClass(): string');
-        $writer->openBlock('{');
-        $writer->writeLine('return self::OUTPUT_CLASS;');
-        $writer->closeBlock();
-        $writer->writeLine();
 
         $this->writeOperationSchemaMethod(
             $writer,
@@ -367,14 +324,7 @@ final class OperationGenerator
 
         $writer->writeLine('public static function inputSchema(): Schema');
         $writer->openBlock('{');
-        if ($inputClass !== null) {
-            $writer->writeLine("return {$inputClass}::schema();");
-        } else {
-            $writer->writeLine(
-                "return new Schema(id: '{$shapeId}Input', "
-                . 'type: ShapeType::Structure);'
-            );
-        }
+        $writer->writeLine("return {$inputClass}::schema();");
         $writer->closeBlock();
         $writer->writeLine();
 
@@ -386,14 +336,7 @@ final class OperationGenerator
 
         $writer->writeLine('public static function outputSchema(): Schema');
         $writer->openBlock('{');
-        if ($outputClass !== null) {
-            $writer->writeLine("return {$outputClass}::schema();");
-        } else {
-            $writer->writeLine(
-                "return new Schema(id: '{$shapeId}Output', "
-                . 'type: ShapeType::Structure);'
-            );
-        }
+        $writer->writeLine("return {$outputClass}::schema();");
         $writer->closeBlock();
         $writer->writeLine();
 
@@ -427,16 +370,7 @@ final class OperationGenerator
                 . 'SerializableStructInterface'
         );
         $writer->openBlock('{');
-        if ($inputClass !== null) {
-            $writer->writeLine(
-                "return {$inputClass}::fromMembers(\$members);"
-            );
-        } else {
-            $writer->writeLine(
-                'return StructDocument::fromMembers('
-                    . 'self::inputSchema(), $members);'
-            );
-        }
+        $writer->writeLine("return {$inputClass}::fromMembers(\$members);");
         $writer->closeBlock();
         $writer->writeLine();
 
@@ -445,16 +379,7 @@ final class OperationGenerator
                 . 'SerializableStructInterface'
         );
         $writer->openBlock('{');
-        if ($outputClass !== null) {
-            $writer->writeLine(
-                "return {$outputClass}::fromMembers(\$members);"
-            );
-        } else {
-            $writer->writeLine(
-                'return StructDocument::fromMembers('
-                    . 'self::outputSchema(), $members);'
-            );
-        }
+        $writer->writeLine("return {$outputClass}::fromMembers(\$members);");
         $writer->closeBlock();
         $writer->writeLine();
 
@@ -517,29 +442,6 @@ final class OperationGenerator
             path: $filePath,
             content: $writer->toFileContent()
         );
-    }
-
-    /**
-     * Find the first member of `$structureId` whose own traits contain
-     * `$traitId`. Returns ['index' => N, 'name' => string] or null.
-     *
-     * @return array{index: int, name: string}|null
-     */
-    private function findMemberWithMemberTrait(
-        string $structureId,
-        string $traitId
-    ): ?array
-    {
-        $idx = 0;
-        $members = $this->getMembersIndexed($structureId);
-        foreach ($members as $name => $def) {
-            $memberTraits = $def['traits'] ?? [];
-            if (\array_key_exists($traitId, $memberTraits)) {
-                return ['index' => $idx, 'name' => $name];
-            }
-            $idx++;
-        }
-        return null;
     }
 
     /**
@@ -614,7 +516,7 @@ final class OperationGenerator
      * @param array<string, mixed>|null $httpTrait
      * @param array<string, string>|null $paginatedTrait
      * @param mixed $waitableTrait
-     * @param string|null $inputTarget Input shape ID for resolving members.
+     * @param string $inputTarget Input shape ID for resolving members.
      * @param array<string, array{class: string, shapeId: string}> $errorMap
      *        Error discriminator metadata.
      * @param array<int|string, mixed> $configuredTraits
@@ -626,7 +528,7 @@ final class OperationGenerator
         ?array $httpTrait,
         ?array $paginatedTrait,
         mixed $waitableTrait,
-        ?string $inputTarget,
+        string $inputTarget,
         array $errorMap,
         bool $httpChecksumRequired,
         bool $readOnly,
@@ -847,10 +749,10 @@ final class OperationGenerator
      * ```
      *
      * @param array<string,mixed> $httpTrait
-     * @param string|null $inputTarget Input shape ID used to resolve label
-     *                                 member indexes.
+     * @param string $inputTarget Input shape ID used to resolve label member
+     *                           indexes.
      */
-    private function buildHttpTraitArrayLiteral(array $httpTrait, ?string $inputTarget): string
+    private function buildHttpTraitArrayLiteral(array $httpTrait, string $inputTarget): string
     {
         $method = $httpTrait['method'] ?? null;
         $uri = $httpTrait['uri'] ?? null;
@@ -880,12 +782,10 @@ final class OperationGenerator
         // pathSegments - only when the path has `{label}` placeholders.
         if ($pathOnly !== null && \str_contains($pathOnly, '{')) {
             $memberIndexMap = [];
-            if ($inputTarget !== null) {
-                $idx = 0;
-                $inputMembers = $this->getMembersIndexed($inputTarget);
-                foreach ($inputMembers as $memberName => $_def) {
-                    $memberIndexMap[$memberName] = $idx++;
-                }
+            $idx = 0;
+            $inputMembers = $this->getMembersIndexed($inputTarget);
+            foreach ($inputMembers as $memberName => $_def) {
+                $memberIndexMap[$memberName] = $idx++;
             }
             $segments = $this->parsePathSegments($pathOnly);
             $segmentEntries = [];
@@ -893,9 +793,16 @@ final class OperationGenerator
                 $litStr = $literal !== null
                     ? $this->exportLiteral($literal)
                     : 'null';
-                $idxStr = $labelName !== null
-                    ? (string) ($memberIndexMap[$labelName] ?? 0)
-                    : 'null';
+                $idxStr = 'null';
+                if ($labelName !== null) {
+                    if (!isset($memberIndexMap[$labelName])) {
+                        throw new \InvalidArgumentException(
+                            "Path label {{$labelName}} has no matching member "
+                                . "in {$inputTarget}"
+                        );
+                    }
+                    $idxStr = (string) $memberIndexMap[$labelName];
+                }
                 $greedyStr = $greedy ? 'true' : 'false';
                 $segmentEntries[] = "[{$litStr}, {$idxStr}, {$greedyStr}]";
             }

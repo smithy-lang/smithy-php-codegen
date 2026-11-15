@@ -643,55 +643,6 @@ final class UnionGenerator
         return $names;
     }
 
-    /**
-     * Build the `traits: [...]` literal for a union member schema.
-     * Currently emits the JSON-codec-relevant traits (`@jsonName`,
-     * `@timestampFormat`). Returns null when no relevant traits exist
-     * so the schema literal stays compact.
-     *
-     * @param array<string, mixed> $traits
-     */
-    private function buildTraitsLiteral(array $traits): ?string
-    {
-        $entries = [];
-        if (isset($traits['smithy.api#jsonName'])) {
-            $value = \var_export((string) $traits['smithy.api#jsonName'], true);
-            $entries[] = "Schema::T_JSON_NAME => {$value}";
-        }
-        if (isset($traits['smithy.api#timestampFormat'])) {
-            $value = \var_export(
-                (string) $traits['smithy.api#timestampFormat'],
-                true
-            );
-            $entries[] = "Schema::T_TIMESTAMP_FORMAT => {$value}";
-        }
-        if ($entries === []) {
-            return null;
-        }
-        return '[' . \implode(', ', $entries) . ']';
-    }
-
-    private function smithyTypeToEnum(string $type): string
-    {
-        return match ($type) {
-            'structure' => 'ShapeType::Structure',
-            'union' => 'ShapeType::Union',
-            'enum' => 'ShapeType::Enum',
-            'intEnum' => 'ShapeType::IntEnum',
-            'list' => 'ShapeType::List_',
-            'map' => 'ShapeType::Map',
-            'string' => 'ShapeType::String_',
-            'integer' => 'ShapeType::Integer',
-            'long' => 'ShapeType::Long',
-            'float' => 'ShapeType::Float_',
-            'double' => 'ShapeType::Double',
-            'boolean' => 'ShapeType::Boolean',
-            'timestamp' => 'ShapeType::Timestamp',
-            'blob' => 'ShapeType::Blob',
-            default => 'ShapeType::String_'
-        };
-    }
-
     private function cleanDocumentation(string $text): string
     {
         $text = strip_tags($text);

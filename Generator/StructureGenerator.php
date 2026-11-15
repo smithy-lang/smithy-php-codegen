@@ -96,54 +96,6 @@ final class StructureGenerator
 
         $writer = new PhpCodeWriter($namespace);
 
-        // Every generated structure carries the full encode/decode contract.
-        // Reachability used to gate whether `serializeMembers` / `fromFields`
-        // were emitted. that gating is gone - the structure files are
-        // symmetric across client, server, protocol tests, and mocking, and
-        // the small bytecode cost of an unused method body is preferable to
-        // the consumer-visible asymmetry. The local flags stay `true` so the
-        // existing branch structure (HTTP-binding detection, trait imports,
-        // method emission) runs unchanged.
-        $isSerializable = true;
-        $isDeserializable = true;
-
-        // Detect if this shape has any HTTP binding members (for both input and
-        // output shapes)
-        $hasHttpBindings = false;
-        $hasHttpResponseBindings = false;
-        $httpTraitIds = [
-            'smithy.api#httpHeader',
-            'smithy.api#httpQuery',
-            'smithy.api#httpLabel',
-            'smithy.api#httpPayload',
-            'smithy.api#httpPrefixHeaders',
-            'smithy.api#httpQueryParams'
-        ];
-        $httpResponseTraitIds = [
-            'smithy.api#httpHeader', 'smithy.api#httpPrefixHeaders',
-            'smithy.api#httpPayload', 'smithy.api#httpResponseCode'
-        ];
-        if ($isSerializable) {
-            foreach ($this->model->getMembers($shapeId) as $memberDef) {
-                foreach ($httpTraitIds as $traitId) {
-                    if (isset($memberDef['traits'][$traitId])) {
-                        $hasHttpBindings = true;
-                        break 2;
-                    }
-                }
-            }
-        }
-        if ($isDeserializable) {
-            foreach ($this->model->getMembers($shapeId) as $memberDef) {
-                foreach ($httpResponseTraitIds as $traitId) {
-                    if (isset($memberDef['traits'][$traitId])) {
-                        $hasHttpResponseBindings = true;
-                        break 2;
-                    }
-                }
-            }
-        }
-
         // Every structure implements `SerializableStructInterface`, which
         // covers the schema, the encode contract (`serialize`,
         // `serializeMembers`, `getMemberValue`), and the decode contract
@@ -153,7 +105,6 @@ final class StructureGenerator
         $writer->addImport('Smithy\\Core\\Serde\\SerializableStructInterface');
         $writer->addImport('Smithy\\Core\\Serde\\ShapeSerializerInterface');
         $writer->addImport('Smithy\\Core\\Serde\\Schema');
-        $writer->addImport('Smithy\\Core\\Shape\\ShapeType');
         if ($paginationTokenMember !== null) {
             $writer->addImport(
                 'Smithy\\Client\\Pagination\\PaginatedRequestInterface'
@@ -338,7 +289,6 @@ final class StructureGenerator
         $this->writeConstructor(
             $writer,
             $shapeId,
-            $isSerializable,
             $isError,
             $errorFault
         );
@@ -372,12 +322,14 @@ final class StructureGenerator
         // struct-specific `serializeMembers()` and `getMemberValue()`.
         // Reachability gating is gone, so every structure carries the full
         // encode contract.
-        if ($isSerializable) {
-            $this->writeSerializeMethod($writer);
-            $writer->writeLine();
-            $this->writeSerializeMembersMethod($writer, $shapeId);
-            $writer->writeLine();
-            $this->writeGetMemberValueMethod($writer, $shapeId);
+        $this->writeSerializeMethod($writer);
+        $writer->writeLine();
+        $this->writeSerializeMembersMethod($writer, $shapeId);
+        $writer->writeLine();
+        $this->writeGetMemberValueMethod($writer, $shapeId);
+        $writer->writeLine();
+        if ($members !== []) {
+            $this->writeWithMemberValueMethod($writer, $shapeId);
             $writer->writeLine();
         }
 
@@ -644,7 +596,6 @@ final class StructureGenerator
     private function writeConstructor(
         PhpCodeWriter $writer,
         string $shapeId,
-        bool $isSerializable = true,
         bool $isError = false,
         ?string $errorFault = null
     ): void
@@ -1254,145 +1205,6 @@ final class StructureGenerator
         $writer->closeBlock();
     }
 
-    /**
-     * Propagate serialization-relevant traits from the target shape to the member traits.
-     * Only adds traits that are NOT already present on the member (member takes precedence).
-     *
-     * This handles cases like:
-     * - @timestampFormat on a target timestamp shape (e.g., EpochSeconds)
-     * - @xmlNamespace on a target structure shape
-     * - @xmlAttribute on a target (rare but possible)
-     *
-     * @return void
-     */
-    private function propagateTargetTraits(string $targetId, array &$traits): void
-    {
-        $targetShape = $this->model->getShape($targetId);
-        if ($targetShape === null) {
-            return;
-        }
-
-        $targetTraits = $targetShape['traits'] ?? [];
-
-        // Traits that should propagate from target to member schema if not
-        // already set
-        $propagateList = [
-            'smithy.api#timestampFormat',
-            'smithy.api#xmlNamespace',
-            'smithy.api#xmlAttribute',
-            'smithy.api#streaming',
-            // @mediaType propagates so the HTTP binding provider can detect
-            // base64 encoding for `@httpHeader` members whose target string
-            // carries the trait (e.g. `JsonValue`).
-            'smithy.api#mediaType',
-            // @sparse lives on the list/map *shape*. Propagate to the
-            // member so the JSON codec's serializeList/serializeMap can
-            // inspect it on the member schema directly.
-            'smithy.api#sparse',
-            // @sensitive lives on the target shape (e.g. `SecretString`).
-            // Propagate so `SensitiveStringableTrait` and any consumer
-            // walking a member schema sees the sensitivity flag without
-            // resolving the target class first.
-            'smithy.api#sensitive'
-        ];
-
-
-        foreach ($propagateList as $traitId) {
-            if (!isset($traits[$traitId])
-                && isset($targetTraits[$traitId])
-            ) {
-                $traits[$traitId] = $targetTraits[$traitId];
-            }
-        }
-    }
-
-    /**
-     * Build serde-relevant traits for a member.
-     *
-     * @return array<string, mixed> Model trait ID => value. Keys map to int constants.
-     */
-    private function buildMemberTraits(array $memberTraits): array
-    {
-        $serdeTraits = [];
-
-        foreach ($this->traitIndexMap() as $traitId => $index) {
-            if (isset($memberTraits[$traitId])) {
-                $serdeTraits[$traitId] = $memberTraits[$traitId];
-            }
-        }
-
-        return $serdeTraits;
-    }
-
-    /** Map from Schema::T_* constant name to its int value (for packed array index) */
-    private const TRAIT_INDEX_MAP = [
-        'smithy.api#xmlName' => 0,        // Schema::T_XML_NAME
-        'smithy.api#xmlNamespace' => 1,    // Schema::T_XML_NAMESPACE
-        'smithy.api#xmlAttribute' => 2,    // Schema::T_XML_ATTRIBUTE
-        'smithy.api#xmlFlattened' => 3,    // Schema::T_XML_FLATTENED
-        'smithy.api#timestampFormat' => 4, // Schema::T_TIMESTAMP_FORMAT
-        'smithy.api#httpHeader' => 5,      // Schema::T_HTTP_HEADER
-        'smithy.api#httpLabel' => 6,       // Schema::T_HTTP_LABEL
-        'smithy.api#httpPayload' => 7,     // Schema::T_HTTP_PAYLOAD
-        'smithy.api#httpPrefixHeaders' => 8,  // Schema::T_HTTP_PREFIX_HEADERS
-        'smithy.api#httpQuery' => 9,       // Schema::T_HTTP_QUERY
-        'smithy.api#httpQueryParams' => 10,   // Schema::T_HTTP_QUERY_PARAMS
-        'smithy.api#httpResponseCode' => 11,  // Schema::T_HTTP_RESPONSE_CODE
-        'smithy.api#jsonName' => 12,       // Schema::T_JSON_NAME
-        'smithy.api#mediaType' => 13,      // Schema::T_MEDIA_TYPE
-        'smithy.api#required' => 14,       // Schema::T_REQUIRED
-        'smithy.api#sparse' => 15,         // Schema::T_SPARSE
-        'smithy.api#streaming' => 16,      // Schema::T_STREAMING
-        'smithy.api#idempotencyToken' => 19, // Schema::T_IDEMPOTENCY_TOKEN
-        'smithy.api#sensitive' => 20         // Schema::T_SENSITIVE
-    ];
-
-
-    /**
-     * Render populated dense-trait indexes without null padding.
-     */
-    private function renderTraitsArray(array $traits): string
-    {
-        if (empty($traits)) {
-            return '';
-        }
-
-        $indexed = [];
-        $traitIndexMap = $this->traitIndexMap();
-        foreach ($traits as $traitId => $value) {
-            $idx = $traitIndexMap[$traitId] ?? null;
-            if ($idx === null) {
-                continue;
-            }
-            $indexed[$idx] = $value;
-        }
-
-        if ($indexed === []) {
-            return '';
-        }
-
-        \ksort($indexed);
-        $parts = [];
-        foreach ($indexed as $index => $value) {
-            if ($value === [] || $value === (object)[] || $value === null) {
-                $literal = 'true';
-            } else {
-                $literal = PhpCodeWriter::exportLiteral($value);
-            }
-            $parts[] = $index . ' => ' . $literal;
-        }
-
-        return ', traits: [' . implode(', ', $parts) . ']';
-    }
-
-    /**
-     * @return array<string, int>
-     */
-    private function traitIndexMap(): array
-    {
-        return self::TRAIT_INDEX_MAP
-            + $this->settings->schemaTraitIndices;
-    }
 
     /**
      * Strip HTML tags and clean up documentation text for PHPDoc.
@@ -1474,15 +1286,6 @@ final class StructureGenerator
         return $lines;
     }
 
-    private function extractShortName(string $fqcn): string
-    {
-        $lastSlash = strrpos($fqcn, '\\');
-        if ($lastSlash === false) {
-            return $fqcn;
-        }
-        return substr($fqcn, $lastSlash + 1);
-    }
-
     private function resolveErrorParentClass(): string
     {
         foreach ($this->model->getServiceShapes() as $shapeId => $_) {
@@ -1516,183 +1319,6 @@ final class StructureGenerator
         }
 
         return '\\' . \ltrim($this->errorParentClass, '\\');
-    }
-
-    private function smithyTypeToEnum(string $type): string
-    {
-        return match ($type) {
-            'structure' => 'ShapeType::Structure',
-            'union' => 'ShapeType::Union',
-            'enum' => 'ShapeType::Enum',
-            'intEnum' => 'ShapeType::IntEnum',
-            'list' => 'ShapeType::List_',
-            'map' => 'ShapeType::Map',
-            'string' => 'ShapeType::String_',
-            'integer' => 'ShapeType::Integer',
-            'long' => 'ShapeType::Long',
-            'short' => 'ShapeType::Short',
-            'byte' => 'ShapeType::Byte',
-            'float' => 'ShapeType::Float_',
-            'double' => 'ShapeType::Double',
-            'boolean' => 'ShapeType::Boolean',
-            'timestamp' => 'ShapeType::Timestamp',
-            'blob' => 'ShapeType::Blob',
-            'bigInteger' => 'ShapeType::BigInteger',
-            'bigDecimal' => 'ShapeType::BigDecimal',
-            'document' => 'ShapeType::Document',
-            default => 'ShapeType::String_'
-        };
-    }
-
-    /**
-     * Build listMember/mapKey/mapValue parameters for list and map types.
-     *
-     * @param array<string, true> $visited Cycle detection set of already-expanded shape IDs
-     */
-    private function buildCollectionParams(
-        string $targetId,
-        string $targetType,
-        array $visited = []
-    ): string
-    {
-        // Cycle detection: if we've already expanded this shape, stop recursing
-        if (isset($visited[$targetId])) {
-            return '';
-        }
-        $visited[$targetId] = true;
-
-        $targetShape = $this->model->getShape($targetId);
-        if ($targetShape === null) {
-            return '';
-        }
-
-        if ($targetType === 'list') {
-            $memberTarget =
-                $targetShape['member']['target'] ?? 'smithy.api#String';
-            $memberType = $this->model->getShapeType($memberTarget) ?? 'string';
-            $memberTypeEnum = $this->smithyTypeToEnum($memberType);
-            // Check for xmlName on the list member
-            $memberTraits = $targetShape['member']['traits'] ?? [];
-            $listMemberTraits = $this->buildMemberTraits($memberTraits);
-            $listMemberTraitsStr = $this->renderTraitsArray($listMemberTraits);
-            $memberMembers = $this->buildInlineMembers(
-                $memberTarget,
-                $memberType,
-                $visited
-            );
-
-            return ", listMember: new Schema(id: '{$memberTarget}', "
-                . "type: {$memberTypeEnum}"
-                . "{$memberMembers}{$listMemberTraitsStr})";
-        }
-
-        if ($targetType === 'map') {
-            $keyTarget = $targetShape['key']['target'] ?? 'smithy.api#String';
-            $keyType = $this->model->getShapeType($keyTarget) ?? 'string';
-            $keyTypeEnum = $this->smithyTypeToEnum($keyType);
-
-            $valueTarget =
-                $targetShape['value']['target'] ?? 'smithy.api#String';
-            $valueType = $this->model->getShapeType($valueTarget) ?? 'string';
-            $valueTypeEnum = $this->smithyTypeToEnum($valueType);
-
-            // Check for xmlName on key/value
-            $keyTraits = $targetShape['key']['traits'] ?? [];
-            $valueTraits = $targetShape['value']['traits'] ?? [];
-            $keyTraitsStr = $this->renderTraitsArray(
-                $this->buildMemberTraits($keyTraits)
-            );
-            $valueTraitsStr = $this->renderTraitsArray(
-                $this->buildMemberTraits($valueTraits)
-            );
-            $valueMembers = $this->buildInlineMembers(
-                $valueTarget,
-                $valueType,
-                $visited
-            );
-            // Recursively include collection params for nested map/list values
-            $valueCollectionParams = $this->buildCollectionParams(
-                $valueTarget,
-                $valueType,
-                $visited
-            );
-
-            return ", mapKey: new Schema(id: '{$keyTarget}', "
-                . "type: {$keyTypeEnum}{$keyTraitsStr}), "
-                . "mapValue: new Schema(id: '{$valueTarget}', "
-                . "type: {$valueTypeEnum}"
-                . "{$valueMembers}{$valueCollectionParams}{$valueTraitsStr})";
-        }
-
-        return '';
-    }
-
-    /**
-     * Build inline members for a structure/union target in a collection schema.
-     * This allows the deserializer to read nested struct members without
-     * needing to look up the class.
-     *
-     * @param array<string, true> $visited Cycle detection set of already-expanded shape IDs
-     */
-    private function buildInlineMembers(
-        string $targetId,
-        string $targetType,
-        array $visited = []
-    ): string
-    {
-        if ($targetType !== 'structure' && $targetType !== 'union') {
-            return '';
-        }
-
-        // Cycle detection: if we've already expanded this shape, stop recursing
-        // The runtime deserializer's resolveSchemaFromId() will handle
-        // resolution
-        if (isset($visited[$targetId])) {
-            return '';
-        }
-        $visited[$targetId] = true;
-
-        $members = $targetType === 'structure'
-            ? $this->getMembersIndexed($targetId)
-            : $this->model->getMembers($targetId);
-        if (empty($members)) {
-            return '';
-        }
-
-        $parts = [];
-        $index = 0;
-        foreach ($members as $memberName => $memberDef) {
-            $memTargetId = $memberDef['target'] ?? 'smithy.api#String';
-            $memTargetType =
-                $this->model->getShapeType($memTargetId) ?? 'string';
-            $memTypeEnum = $this->smithyTypeToEnum($memTargetType);
-            $memTraits = $this->buildMemberTraits($memberDef['traits'] ?? []);
-            $memTraitsStr = $this->renderTraitsArray($memTraits);
-            $memCollectionParams = $this->buildCollectionParams(
-                $memTargetId,
-                $memTargetType,
-                $visited
-            );
-            // For all struct/union member stubs, emit targetClass for runtime
-            // resolution.
-            // These members don't get their own members inlined at this depth,
-            // so the deserializer needs targetClass to resolve the full schema.
-            // Use FQCN with leading backslash to avoid namespace resolution
-            // issues.
-            $targetClassStr = '';
-            if ($memTargetType === 'structure' || $memTargetType === 'union') {
-                $targetFqcn = $this->symbolProvider->toClassName($memTargetId);
-                $targetClassStr = ", targetClass: \\{$targetFqcn}::class";
-            }
-            $parts[] = "new Schema(id: '{$memTargetId}', "
-                . "type: {$memTypeEnum}, "
-                . "memberName: '{$memberName}', "
-                . "memberIndex: {$index}"
-                . "{$memCollectionParams}{$memTraitsStr}{$targetClassStr})";
-            $index++;
-        }
-
-        return ', members: [' . implode(', ', $parts) . ']';
     }
 
     /**
@@ -1752,104 +1378,6 @@ final class StructureGenerator
     }
 
     /**
-     * Emit serializeMembers() with inline HTTP binding serialization.
-     * HTTP-bound members are written directly to serializer properties.
-     * Body members use write*() forwarding to codec.
-     */
-    private function writeSerializeMembersWithHttpBindings(
-        PhpCodeWriter $writer,
-        string $shapeId,
-        array $members
-    ): void
-    {
-        $writer->writeLine(
-            'public function serializeMembers('
-            . 'ShapeSerializerInterface $serializer): void'
-        );
-        $writer->openBlock('{');
-        $writer->writeLine();
-
-        // Separate members by binding type.
-        $httpMembers = [];
-        $bodyMembers = [];
-        $index = 0;
-        foreach ($members as $memberName => $memberDef) {
-            $memberTraits = $memberDef['traits'] ?? [];
-            $binding = $this->resolveHttpBinding($memberTraits);
-            if ($binding !== null) {
-                $httpMembers[$index] = [
-                    $memberName,
-                    $memberDef,
-                    $binding[0],
-                    $binding[1]
-                ];
-            } else {
-                $bodyMembers[$index] = [$memberName, $memberDef];
-            }
-            $index++;
-        }
-
-        // Emit inline HTTP member serialization (no schema access needed)
-        foreach ($httpMembers as $idx => [
-            $memberName,
-            $memberDef,
-            $bindingType,
-            $bindingValue
-        ]) {
-            $this->writeInlineHttpMember(
-                $writer,
-                $shapeId,
-                $memberName,
-                $memberDef,
-                $idx,
-                $bindingType,
-                $bindingValue
-            );
-        }
-
-        // Emit body members via write*() calls (forwarded to codec)
-        // Each body member accesses schema inline inside isset check
-        if (!empty($bodyMembers)) {
-            $writer->writeLine();
-            $writer->writeLine(
-                '// Body members - forwarded to codec serializer'
-            );
-
-            // Write attribute members first (XML ordering)
-            $attrBody = [];
-            $elemBody = [];
-            foreach ($bodyMembers as $idx => [$memberName, $memberDef]) {
-                $memberTraits = $memberDef['traits'] ?? [];
-                if (isset($memberTraits['smithy.api#xmlAttribute'])) {
-                    $attrBody[$idx] = [$memberName, $memberDef];
-                } else {
-                    $elemBody[$idx] = [$memberName, $memberDef];
-                }
-            }
-            foreach ($attrBody as $idx => [$memberName, $memberDef]) {
-                $this->writeBodyMemberCall(
-                    $writer,
-                    $shapeId,
-                    $memberName,
-                    $memberDef,
-                    $idx
-                );
-            }
-            foreach ($elemBody as $idx => [$memberName, $memberDef]) {
-                $this->writeBodyMemberCall(
-                    $writer,
-                    $shapeId,
-                    $memberName,
-                    $memberDef,
-                    $idx
-                );
-            }
-        }
-
-        $writer->closeBlock();
-    }
-
-    /**
      * Emit serializeMembers() using Schemas::$ClassName_MemberName references.
      * Ensures schema is initialized via Schemas init method, then references
      * member schemas directly from the centralized Schemas class.
@@ -1901,735 +1429,6 @@ final class StructureGenerator
         $writer->closeBlock();
     }
 
-    /**
-     * Resolve HTTP binding type and value for a member.
-     * Returns [bindingType, bindingValue] or null if not HTTP-bound.
-     */
-    private function resolveHttpBinding(array $memberTraits): ?array
-    {
-        if (isset($memberTraits['smithy.api#httpHeader'])) {
-            return [
-                'header',
-                strtolower($memberTraits['smithy.api#httpHeader'])
-            ];
-        }
-        if (isset($memberTraits['smithy.api#httpQuery'])) {
-            return ['query', $memberTraits['smithy.api#httpQuery']];
-        }
-        if (isset($memberTraits['smithy.api#httpLabel'])) {
-            return ['label', null];
-        }
-        if (isset($memberTraits['smithy.api#httpPayload'])) {
-            return ['payload', null];
-        }
-        if (isset($memberTraits['smithy.api#httpPrefixHeaders'])) {
-            return [
-                'prefixHeaders',
-                $memberTraits['smithy.api#httpPrefixHeaders']
-            ];
-        }
-        if (isset($memberTraits['smithy.api#httpQueryParams'])) {
-            return ['queryParams', null];
-        }
-        return null;
-    }
-
-    /**
-     * Emit inline serialization for a single HTTP-bound member.
-     */
-    private function writeInlineHttpMember(
-        PhpCodeWriter $writer,
-        string $shapeId,
-        string $memberName,
-        array $memberDef,
-        int $index,
-        string $bindingType,
-        ?string $bindingValue
-    ): void
-    {
-        $propertyName = $this->toMemberStoragePropertyName(
-            $shapeId,
-            $memberName
-        );
-        $targetId = $memberDef['target'] ?? 'smithy.api#String';
-        $targetType = $this->model->getShapeType($targetId) ?? 'string';
-        $memberTraits = $memberDef['traits'] ?? [];
-
-        $writer->writeLine("if (isset(\$this->{$propertyName})) {");
-        $writer->pushIndent();
-
-        match ($bindingType) {
-            'header' => $this->writeInlineHeader(
-                $writer,
-                $propertyName,
-                $targetType,
-                $bindingValue,
-                $memberTraits,
-                $targetId,
-                $index
-            ),
-            'query' => $this->writeInlineQuery(
-                $writer,
-                $propertyName,
-                $targetType,
-                $bindingValue,
-                $memberTraits,
-                $targetId,
-                $index
-            ),
-            'label' => $this->writeInlineLabel(
-                $writer,
-                $propertyName,
-                $targetType,
-                $memberName,
-                $memberTraits,
-                $targetId,
-                $index
-            ),
-            'payload' => $this->writeInlinePayload(
-                $writer,
-                $propertyName,
-                $targetType,
-                $index
-            ),
-            'prefixHeaders' => $this->writeInlinePrefixHeaders(
-                $writer,
-                $propertyName,
-                $bindingValue
-            ),
-            'queryParams' => $this->writeInlineQueryParams(
-                $writer,
-                $propertyName
-            )
-        };
-
-        $writer->popIndent();
-        $writer->writeLine('}');
-    }
-
-    private function writeInlineHeader(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $type,
-        string $headerName,
-        array $traits,
-        string $targetId,
-        int $idx
-    ): void
-    {
-        $target = "\$serializer->headers['{$headerName}']";
-        $source = "\$this->{$prop}";
-
-        match ($type) {
-            'string' => $writer->writeLine("{$target} = {$source};"),
-            'integer', 'long', 'short', 'byte' => $writer->writeLine(
-                "{$target} = (string) {$source};"
-            ),
-            'boolean' => $writer->writeLine(
-                "{$target} = {$source} ? 'true' : 'false';"
-            ),
-            'float', 'double' => $writer->writeLine(
-                "{$target} = \$serializer->formatFloat({$source});"
-            ),
-            'timestamp' => $this->writeInlineTimestamp(
-                $writer,
-                $prop,
-                $headerName,
-                'headers',
-                $traits,
-                $targetId,
-                1
-            ),
-            'enum' => $writer->writeLine("{$target} = {$source}->value;"),
-            'intEnum' => $writer->writeLine(
-                "{$target} = (string) {$source}->value;"
-            ),
-            'list' => $this->writeInlineListHeader(
-                $writer,
-                $prop,
-                $headerName,
-                $targetId,
-                $idx
-            ),
-            default => $writer->writeLine("{$target} = (string) {$source};")
-        };
-    }
-
-    private function writeInlineQuery(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $type,
-        string $queryName,
-        array $traits,
-        string $targetId,
-        int $idx
-    ): void
-    {
-        $source = "\$this->{$prop}";
-
-        match ($type) {
-            'string' => $writer->writeLine(
-                "\$serializer->writeQueryPair('{$queryName}', {$source});"
-            ),
-            'integer', 'long', 'short', 'byte' => $writer->writeLine(
-                "\$serializer->writeQueryPair("
-                . "'{$queryName}', (string) {$source});"
-            ),
-            'boolean' => $writer->writeLine(
-                "\$serializer->writeQueryPair("
-                . "'{$queryName}', {$source} ? 'true' : 'false');"
-            ),
-            'float', 'double' => $writer->writeLine(
-                "\$serializer->writeQueryPair("
-                . "'{$queryName}', \$serializer->formatFloat({$source}));"
-            ),
-            'timestamp' => $this->writeInlineTimestamp(
-                $writer,
-                $prop,
-                $queryName,
-                'query',
-                $traits,
-                $targetId,
-                0
-            ),
-            'enum' => $writer->writeLine(
-                "\$serializer->writeQueryPair("
-                . "'{$queryName}', {$source}->value);"
-            ),
-            'intEnum' => $writer->writeLine(
-                "\$serializer->writeQueryPair("
-                . "'{$queryName}', (string) {$source}->value);"
-            ),
-            'list' => $this->writeInlineListQuery(
-                $writer,
-                $prop,
-                $queryName,
-                $targetId
-            ),
-            default => $writer->writeLine(
-                "\$serializer->writeQueryPair('{$queryName}', "
-                . "(string) {$source});"
-            )
-        };
-    }
-
-    private function writeInlineLabel(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $type,
-        string $memberName,
-        array $traits,
-        string $targetId,
-        int $idx
-    ): void
-    {
-        $target = "\$serializer->labels['{$memberName}']";
-        $source = "\$this->{$prop}";
-
-        match ($type) {
-            'string' => $writer->writeLine("{$target} = {$source};"),
-            'integer', 'long', 'short', 'byte' => $writer->writeLine(
-                "{$target} = (string) {$source};"
-            ),
-            'boolean' => $writer->writeLine(
-                "{$target} = {$source} ? 'true' : 'false';"
-            ),
-            'float', 'double' => $writer->writeLine(
-                "{$target} = \$serializer->formatFloat({$source});"
-            ),
-            'timestamp' => $this->writeInlineTimestamp(
-                $writer,
-                $prop,
-                $memberName,
-                'labels',
-                $traits,
-                $targetId,
-                0
-            ),
-            'enum' => $writer->writeLine("{$target} = {$source}->value;"),
-            'intEnum' => $writer->writeLine(
-                "{$target} = (string) {$source}->value;"
-            ),
-            default => $writer->writeLine("{$target} = (string) {$source};")
-        };
-    }
-
-    private function writeInlinePayload(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $type,
-        int $idx
-    ): void
-    {
-        // All payloads: set raw value. Protocol resolves schema from
-        // bindingInfo.
-        $writer->writeLine("\$serializer->payload = \$this->{$prop};");
-    }
-
-    private function writeInlinePrefixHeaders(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $prefix
-    ): void
-    {
-        $writer->writeLine(
-            "\$serializer->serializePrefixHeaders("
-            . "'{$prefix}', \$this->{$prop});"
-        );
-    }
-
-    private function writeInlineQueryParams(PhpCodeWriter $writer, string $prop): void
-    {
-        $writer->writeLine(
-            "\$serializer->serializeQueryParams(\$this->{$prop});"
-        );
-    }
-
-    private function writeInlineTimestamp(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $name,
-        string $target,
-        array $traits,
-        string $targetId,
-        int $defaultFormat
-    ): void
-    {
-        // Resolve format from member or target traits
-        $format = $traits['smithy.api#timestampFormat'] ?? null;
-        if ($format === null) {
-            $format = $this->model->getTrait(
-                $targetId,
-                'smithy.api#timestampFormat'
-            );
-        }
-
-        $formatInt = $format !== null ? match ($format) {
-            'http-date' => 1,
-            'epoch-seconds' => 2,
-            'date-time' => 0,
-            default => $defaultFormat,
-        } : $defaultFormat;
-
-        $source = "\$this->{$prop}";
-        if ($target === 'headers') {
-            $writer->writeLine(
-                "\$serializer->headers['{$name}'] = "
-                . "\$serializer->formatTimestamp({$source}, {$formatInt});"
-            );
-        } elseif ($target === 'query') {
-            $writer->writeLine(
-                "\$serializer->writeQueryPair('{$name}', "
-                . "\$serializer->formatTimestamp({$source}, {$formatInt}));"
-            );
-        } else {
-            $writer->writeLine(
-                "\$serializer->labels['{$name}'] = "
-                . "\$serializer->formatTimestamp({$source}, {$formatInt});"
-            );
-        }
-    }
-
-    private function writeInlineListHeader(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $headerName,
-        string $targetId,
-        int $idx
-    ): void
-    {
-        // For list headers, join values with ', '
-        $targetShape = $this->model->getShape($targetId);
-        $itemTarget = $targetShape['member']['target'] ?? 'smithy.api#String';
-        $itemType = $this->model->getShapeType($itemTarget) ?? 'string';
-        $target = "\$serializer->headers['{$headerName}']";
-        $source = "\$this->{$prop}";
-
-        if ($itemType === 'string') {
-            $writer->writeLine("{$target} = implode(', ', {$source});");
-        } elseif ($itemType === 'boolean') {
-            $writer->writeLine(
-                "{$target} = implode(', ', array_map("
-                . "fn(\$v) => \$v ? 'true' : 'false', {$source}));"
-            );
-        } elseif ($itemType === 'timestamp') {
-            $writer->writeLine(
-                "{$target} = implode(', ', array_map("
-                . "fn(\$v) => \$serializer->formatTimestamp(\$v, 1), "
-                . "{$source}));"
-            );
-        } elseif (in_array(
-            $itemType,
-            ['integer', 'long', 'short', 'byte'],
-            true
-        )) {
-            $writer->writeLine(
-                "{$target} = implode(', ', "
-                . "array_map(fn(\$v) => (string) \$v, {$source}));"
-            );
-        } elseif (in_array($itemType, ['enum', 'intEnum'], true)) {
-            $writer->writeLine(
-                "{$target} = implode(', ', "
-                . "array_map(fn(\$v) => (string) \$v->value, {$source}));"
-            );
-        } else {
-            $writer->writeLine(
-                "{$target} = implode(', ', "
-                . "array_map(fn(\$v) => (string) \$v, {$source}));"
-            );
-        }
-    }
-
-    private function writeInlineListQuery(
-        PhpCodeWriter $writer,
-        string $prop,
-        string $queryName,
-        string $targetId
-    ): void
-    {
-        // For list queries, detect item type to handle non-string items
-        // correctly
-        $targetShape = $this->model->getShape($targetId);
-        $itemTarget = $targetShape['member']['target'] ?? 'smithy.api#String';
-        $itemType = $this->model->getShapeType($itemTarget) ?? 'string';
-        $source = "\$this->{$prop}";
-
-        if (in_array($itemType, ['enum', 'intEnum'], true)) {
-            $writer->writeLine(
-                "\$serializer->serializeListQuery('{$queryName}', "
-                . "array_map(fn(\$v) => (string) \$v->value, {$source}));"
-            );
-        } elseif ($itemType === 'boolean') {
-            $writer->writeLine(
-                "\$serializer->serializeListQuery('{$queryName}', "
-                . "array_map(fn(\$v) => \$v ? 'true' : 'false', {$source}));"
-            );
-        } elseif ($itemType === 'timestamp') {
-            $writer->writeLine(
-                "\$serializer->serializeListQuery('{$queryName}', "
-                . "array_map(fn(\$v) => \$serializer->formatTimestamp(\$v, 0), "
-                . "{$source}));"
-            );
-        } else {
-            $writer->writeLine(
-                "\$serializer->serializeListQuery('{$queryName}', {$source});"
-            );
-        }
-    }
-
-    /**
-     * Emit a body member's serialization call with inline schema access.
-     * Schema is accessed inside the isset check so no schema call happens if member is null.
-     */
-    private function writeBodyMemberCall(
-        PhpCodeWriter $writer,
-        string $shapeId,
-        string $memberName,
-        array $memberDef,
-        int $index
-    ): void
-    {
-        $propertyName = $this->toMemberStoragePropertyName(
-            $shapeId,
-            $memberName
-        );
-        $targetId = $memberDef['target'] ?? 'smithy.api#String';
-        $targetType = $this->model->getShapeType($targetId) ?? 'string';
-        $memberTraits = $memberDef['traits'] ?? [];
-
-        $schemaRef = "self::schema()->getMemberByIndex({$index})";
-
-        // Determine the write* method to call based on the target type
-        $writeCall = match ($targetType) {
-            'boolean' => $this->buildSerializerCall(
-                'serializeBoolean',
-                $schemaRef,
-                $propertyName
-            ),
-            'integer', 'long', 'short', 'byte' => $this->buildSerializerCall(
-                'serializeInteger',
-                $schemaRef,
-                $propertyName
-            ),
-            'float', 'double' => $this->buildSerializerCall(
-                'serializeFloat',
-                $schemaRef,
-                $propertyName
-            ),
-            'bigInteger' => $this->buildSerializerCall(
-                'serializeBigInteger',
-                $schemaRef,
-                $propertyName
-            ),
-            'bigDecimal' => $this->buildSerializerCall(
-                'serializeBigDecimal',
-                $schemaRef,
-                $propertyName
-            ),
-            'string' => $this->buildSerializerCall(
-                'serializeString',
-                $schemaRef,
-                $propertyName
-            ),
-            'enum' => $this->buildSerializerCall(
-                'serializeString',
-                $schemaRef,
-                $propertyName,
-                value: "\$this->{$propertyName}->value"
-            ),
-            'intEnum' => $this->buildSerializerCall(
-                'serializeInteger',
-                $schemaRef,
-                $propertyName,
-                value: "\$this->{$propertyName}->value"
-            ),
-            'blob' => $this->buildSerializerCall(
-                'serializeBlob',
-                $schemaRef,
-                $propertyName
-            ),
-            'timestamp' => $this->buildTimestampWriteCallInline(
-                $index,
-                $propertyName
-            ),
-            'document' => $this->buildSerializerCall(
-                'serializeDocument',
-                $schemaRef,
-                $propertyName,
-                $index
-            ),
-            'list' => $this->buildListWriteCallInline($index, $propertyName),
-            'map' => $this->buildSerializerCall(
-                'serializeMap',
-                $schemaRef,
-                $propertyName
-            ),
-            'structure' => $this->buildSerializerCall(
-                'serializeStruct',
-                $schemaRef,
-                $propertyName
-            ),
-            'union' => $this->buildSerializerCall(
-                'serializeUnion',
-                $schemaRef,
-                $propertyName
-            ),
-            default => $this->buildSerializerCall(
-                'serializeString',
-                $schemaRef,
-                $propertyName,
-                value: "(string) \$this->{$propertyName}"
-            )
-        };
-
-        $writer->writeLine("if (isset(\$this->{$propertyName})) {");
-        $writer->pushIndent();
-        $writer->writeLine($writeCall);
-        $writer->popIndent();
-        $writer->writeLine('}');
-    }
-
-    private function buildTimestampWriteCallInline(
-        int $index,
-        string $propertyName
-    ): string
-    {
-        $schemaRef = "self::schema()->getMemberByIndex({$index})";
-        return "\$serializer->serializeTimestamp("
-            . "{$schemaRef}, \$this->{$propertyName}, 0);";
-    }
-
-    /**
-     * Build the writeList() call for the inline body member path.
-     */
-    private function buildListWriteCallInline(int $index, string $propertyName): string
-    {
-        $schemaRef = "self::schema()->getMemberByIndex({$index})";
-        return "\$serializer->serializeList("
-            . "{$schemaRef}, \$this->{$propertyName}, 0);";
-    }
-
-    /**
-     * Emit a single member's serialization call in serializeMembers() (generic path with $m array).
-     */
-    private function writeSerializeMemberCall(
-        PhpCodeWriter $writer,
-        string $shapeId,
-        string $memberName,
-        array $memberDef,
-        int $index
-    ): void
-    {
-        $propertyName = $this->toMemberStoragePropertyName(
-            $shapeId,
-            $memberName
-        );
-        $targetId = $memberDef['target'] ?? 'smithy.api#String';
-        $targetType = $this->model->getShapeType($targetId) ?? 'string';
-        $memberTraits = $memberDef['traits'] ?? [];
-
-        // Determine the write* method to call based on the target type
-        $writeCall = match ($targetType) {
-            'boolean' => $this->buildSerializerCall(
-                'serializeBoolean',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'integer', 'long', 'short', 'byte' => $this->buildSerializerCall(
-                'serializeInteger',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'float', 'double' => $this->buildSerializerCall(
-                'serializeFloat',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'bigInteger' => $this->buildSerializerCall(
-                'serializeBigInteger',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'bigDecimal' => $this->buildSerializerCall(
-                'serializeBigDecimal',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'string' => $this->buildSerializerCall(
-                'serializeString',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'enum' => $this->buildSerializerCall(
-                'serializeString',
-                "\$m[{$index}]",
-                $propertyName,
-                $index,
-                "\$this->{$propertyName}->value"
-            ),
-            'intEnum' => $this->buildSerializerCall(
-                'serializeInteger',
-                "\$m[{$index}]",
-                $propertyName,
-                $index,
-                "\$this->{$propertyName}->value"
-            ),
-            'blob' => $this->buildSerializerCall(
-                'serializeBlob',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'timestamp' => $this->buildTimestampWriteCall(
-                $index,
-                $propertyName
-            ),
-            'document' => $this->buildSerializerCall(
-                'serializeDocument',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'list' => $this->buildListWriteCall($index, $propertyName),
-            'map' => $this->buildSerializerCall(
-                'serializeMap',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'structure' => $this->buildSerializerCall(
-                'serializeStruct',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            'union' => $this->buildSerializerCall(
-                'serializeUnion',
-                "\$m[{$index}]",
-                $propertyName,
-                $index
-            ),
-            default => $this->buildSerializerCall(
-                'serializeString',
-                "\$m[{$index}]",
-                $propertyName,
-                $index,
-                "(string) \$this->{$propertyName}"
-            )
-        };
-
-        $writer->writeLine("if (isset(\$this->{$propertyName})) {");
-        $writer->pushIndent();
-        $writer->writeLine($writeCall);
-        $writer->popIndent();
-        $writer->writeLine('}');
-    }
-
-    private function buildTimestampWriteCall(
-        int $index,
-        string $propertyName
-    ): string
-    {
-        return $this->buildSerializerCall(
-            'serializeTimestamp',
-            "\$m[{$index}]",
-            $propertyName,
-            $index
-        );
-    }
-
-    /**
-     * Build the writeList() call.
-     */
-    private function buildListWriteCall(int $index, string $propertyName): string
-    {
-        return "\$serializer->serializeList("
-            . "\$m[{$index}], \$this->{$propertyName}, {$index});";
-    }
-
-    /**
-     * Generate the deserializeMembers() method for output/shared/error shapes.
-     *
-     * For shapes with HTTP response bindings: delegates to $deserializer->readMembers()
-     * which handles all HTTP binding dispatch + body delegation using precomputed data.
-     * For shapes without HTTP bindings: delegates entirely to $deserializer->readStruct().
-     */
-    private function writeDeserializeMembersMethod(
-        PhpCodeWriter $writer,
-        string $shapeId,
-        bool $hasHttpResponseBindings
-    ): void
-    {
-        $writer->writeLine(
-            'public static function deserializeMembers('
-            . 'ShapeDeserializerInterface $deserializer, '
-            . 'array &$fields): void'
-        );
-        $writer->openBlock('{');
-
-        if (!$hasHttpResponseBindings) {
-            // No HTTP bindings - delegate entirely to the deserializer (codec
-            // or routing)
-            $writer->writeLine(
-                '$deserializer->readStruct(self::schema(), $fields);'
-            );
-        } else {
-            // HTTP response bindings - delegate to readMembers() which handles
-            // all routing
-            $writer->writeLine(
-                '$deserializer->readMembers(self::schema(), $fields);'
-            );
-        }
-
-        $writer->closeBlock();
-    }
-
     private function writeGetMemberValueMethod(PhpCodeWriter $writer, string $shapeId): void
     {
         $members = $this->getMembersIndexed($shapeId);
@@ -2642,17 +1441,8 @@ final class StructureGenerator
 
         $index = 0;
         foreach ($members as $memberName => $memberDef) {
-            $propertyName = $this->toMemberStoragePropertyName(
-                $shapeId,
-                $memberName
-            );
-            $optionalEnum = $this->isScalarEnumMember($shapeId, $memberName)
-                && !$this->model->isMemberRequired($shapeId, $memberName)
-                && !$this->model->isMemberDefaulted($shapeId, $memberName);
-            $fallback = $optionalEnum ? ' ?? null' : '';
-            $writer->writeLine(
-                "{$index} => \$this->{$propertyName}{$fallback},"
-            );
+            $value = $this->memberValueExpression($shapeId, $memberName);
+            $writer->writeLine("{$index} => {$value},");
             $index++;
         }
 
@@ -2662,44 +1452,60 @@ final class StructureGenerator
         $writer->closeBlock();
     }
 
-    private function writeFromFieldsMethod(
+    /**
+     * Emit a `withMemberValue()` that copies members positionally.
+     *
+     * This skips the generic trait's schema walk, per-member match and sort.
+     *
+     * @return void
+     */
+    private function writeWithMemberValueMethod(
         PhpCodeWriter $writer,
-        string $shapeId,
-        string $className
+        string $shapeId
     ): void
     {
-        // The deserializer is responsible for producing a dense, slot-typed
-        // `$fields` array: each slot already carries the value the matching
-        // constructor parameter expects (hydrated structs/unions/enums,
-        // lists/maps of structs already hydrated, defaulted members already
-        // filled in). `fromFields` collapses to a single positional spread
-        // so the JIT can inline this into the deserializer's hot loop.
-        //
-        // Empty struct shapes (no members) still need the explicit `new
-        // self()` form - a spread over an empty array would be a no-op call
-        // but is uglier and yields no perf benefit.
-        $members = $this->getMembersIndexed($shapeId);
-
-        $writer->writeDocBlock([
-            'Create an instance from a positional field array.',
-            '',
-            'The deserializer pre-hydrates every slot to the type the matching',
-            'constructor parameter accepts, so this is a one-line positional',
-            'spread with no per-slot fallback logic.',
-            '',
-            '@param array $fields Positional values indexed by memberIndex',
-            '@return self'
-        ]);
-        $writer->writeLine('public static function fromFields(array $fields): static');
-        $writer->openBlock('{');
-
-        if (empty($members)) {
-            $writer->writeLine('return new self();');
-        } else {
-            $writer->writeLine('return new self(...$fields);');
+        $values = [];
+        foreach ($this->getMembersIndexed($shapeId) as $memberName => $_) {
+            $values[] = $this->memberValueExpression($shapeId, $memberName);
         }
 
+        $writer->writeDocBlock(['Return a copy with one member replaced.']);
+        $writer->writeLine(
+            'public function withMemberValue(Schema $member, mixed $value): '
+                . 'static'
+        );
+        $writer->openBlock('{');
+        $writer->writeLine('$members = [');
+        $writer->pushIndent();
+        $last = \count($values) - 1;
+        foreach ($values as $i => $value) {
+            $writer->writeLine($value . ($i === $last ? '' : ','));
+        }
+        $writer->popIndent();
+        $writer->writeLine('];');
+        $writer->writeLine('$members[$member->memberIndex] = $value;');
+        $writer->writeLine();
+        $writer->writeLine('return new self(...$members);');
         $writer->closeBlock();
+    }
+
+    /**
+     * Build the expression that reads a member's value from `$this`.
+     */
+    private function memberValueExpression(
+        string $shapeId,
+        string $memberName
+    ): string
+    {
+        $propertyName = $this->toMemberStoragePropertyName(
+            $shapeId,
+            $memberName
+        );
+        $optionalEnum = $this->isScalarEnumMember($shapeId, $memberName)
+            && !$this->model->isMemberRequired($shapeId, $memberName)
+            && !$this->model->isMemberDefaulted($shapeId, $memberName);
+
+        return "\$this->{$propertyName}" . ($optionalEnum ? ' ?? null' : '');
     }
 
 

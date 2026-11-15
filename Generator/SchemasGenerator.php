@@ -23,9 +23,8 @@ use Smithy\Codegen\Writer\PhpCodeWriter;
  * and enables direct cross-shape schema references.
  *
  * Pattern:
- *   Schemas::$CreateWidgetInput      - the structure schema
- *   Schemas::$CreateWidgetInput_Name - the member schema for Name
- *   Schemas::createWidgetInput()      - lazy init method
+ *   Schemas::$CreateWidgetInput   - the structure schema
+ *   Schemas::createWidgetInput()  - lazy init method
  */
 final class SchemasGenerator
 {
@@ -36,6 +35,17 @@ final class SchemasGenerator
      */
     public const GENERATED_FILE_SIGNATURE =
         'Centralized schema registry for all shapes in this service.';
+
+    /**
+     * Short class name of the sibling class that holds shared list and map
+     * member schemas. Kept OFF the `Schemas` class because `Schemas`
+     * declares a `public static Schema $X` property for every shape short
+     * name, and Smithy allows a shape literally named `collectionMembers`
+     * (property names are case-sensitive, so `$CollectionMembers` clashes
+     * too). A sibling class in the service root namespace cannot collide:
+     * generated shape classes live in sub-namespaces, never the root.
+     */
+    private const SHARED_MEMBERS_CLASS = 'SchemasMembers';
 
     private const DIRECT_MEMBER_TRAITS_BY_ID = [
         'smithy.rules#contextParam' => true,
@@ -99,6 +109,12 @@ final class SchemasGenerator
 
     /** @var array<string, true> Imported target class FQCNs */
     private array $importedTargetClasses = [];
+
+    /** @var array<string, mixed> Struct and union shapes with a root method */
+    private array $rootShapes = [];
+
+    /** @var array<string, array<string, true>> Shape ID => reachable shape IDs */
+    private array $reachable = [];
 
     /**
      * @internal
@@ -183,6 +199,7 @@ final class SchemasGenerator
             }
             $enumShapes[$shapeId] = $shape;
         }
+        $this->rootShapes = $structureShapes + $unionShapes;
 
         // Write all static property declarations. The symbol provider's
         // `toShortClassName()` centralizes the error-suffix rule, so this
@@ -221,6 +238,25 @@ final class SchemasGenerator
         }
 
 
+        $writer->closeBlock();
+
+        // Shared list/map member schema cache, kept off `Schemas` to avoid
+        // colliding with a shape named `collectionMembers`. See
+        // self::SHARED_MEMBERS_CLASS.
+        $writer->writeLine();
+        $writer->writeDocBlock([
+            'Shared list and map member schemas for this service, keyed by '
+                . 'member ID.',
+            '',
+            'Held here rather than on Schemas so no generated shape property '
+                . 'can collide with it.'
+        ]);
+        $writer->writeLine(
+            'final class ' . self::SHARED_MEMBERS_CLASS
+        );
+        $writer->openBlock('{');
+        $writer->writeLine('/** @var array<string, Schema> */');
+        $writer->writeLine('public static array $shared = [];');
         $writer->closeBlock();
 
         $filePath = $outputDir . DIRECTORY_SEPARATOR . 'Schemas.php';
@@ -462,6 +498,7 @@ final class SchemasGenerator
         $unionMembers = $this->buildInlineMembers(
             $targetId,
             $targetType,
+            $parentShapeId,
             [$parentShapeId => true]
         );
 
@@ -797,6 +834,7 @@ final class SchemasGenerator
             $memberMembers = $this->buildInlineMembers(
                 $memberTarget,
                 $memberType,
+                $targetId,
                 $visited
             );
             $memberCollectionParams = $this->buildCollectionParams(
@@ -810,7 +848,9 @@ final class SchemasGenerator
             );
             $listMemberId = $targetId . '$member';
 
-            return ", listMember: new Schema(id: '{$listMemberId}', "
+            return ', listMember: '
+                . $this->sharedCollectionMember($targetId, $listMemberId)
+                . "new Schema(id: '{$listMemberId}', "
                 . "type: {$memberTypeEnum}, memberName: 'member', "
                 . "memberIndex: 0"
                 . "{$memberMembers}{$memberCollectionParams}"
@@ -855,6 +895,7 @@ final class SchemasGenerator
             $valueMembers = $this->buildInlineMembers(
                 $valueTarget,
                 $valueType,
+                $targetId,
                 $visited
             );
             $valueCollectionParams = $this->buildCollectionParams(
@@ -869,11 +910,15 @@ final class SchemasGenerator
             $mapKeyId = $targetId . '$key';
             $mapValueId = $targetId . '$value';
 
-            return ", mapKey: new Schema(id: '{$mapKeyId}', "
+            return ', mapKey: '
+                . $this->sharedCollectionMember($targetId, $mapKeyId)
+                . "new Schema(id: '{$mapKeyId}', "
                 . "type: {$keyTypeEnum}, memberName: 'key', memberIndex: 0"
                 . "{$keyTraitsStr}"
                 . "{$keyTraitsByIdStr}{$keyDirectTraitsByIdStr}), "
-                . "mapValue: new Schema(id: '{$mapValueId}', "
+                . 'mapValue: '
+                . $this->sharedCollectionMember($targetId, $mapValueId)
+                . "new Schema(id: '{$mapValueId}', "
                 . "type: {$valueTypeEnum}, memberName: 'value', "
                 . "memberIndex: 1"
                 . "{$valueMembers}{$valueCollectionParams}"
@@ -886,13 +931,125 @@ final class SchemasGenerator
     }
 
     /**
+     * Build the `??=` prefix that caches a list or map member schema.
+     *
+     * Outside a cycle, a collection's member schema depends only on the
+     * collection shape, so every use site shares one instance. On a cycle,
+     * the cut point depends on the use site, so each site keeps its own.
+     */
+    private function sharedCollectionMember(
+        string $collectionId,
+        string $memberId
+    ): string
+    {
+        if ($this->reaches($collectionId, $collectionId)) {
+            return '';
+        }
+
+        return self::SHARED_MEMBERS_CLASS
+            . "::\$shared['{$memberId}'] ??= ";
+    }
+
+    /**
+     * Return true when `$fromId` reaches `$toId` through member targets.
+     */
+    private function reaches(string $fromId, string $toId): bool
+    {
+        if (!isset($this->reachable[$fromId])) {
+            $seen = [];
+            $pending = $this->memberTargets($fromId);
+            while ($pending !== []) {
+                $id = \array_pop($pending);
+                if (!isset($seen[$id])) {
+                    $seen[$id] = true;
+                    \array_push($pending, ...$this->memberTargets($id));
+                }
+            }
+            $this->reachable[$fromId] = $seen;
+        }
+
+        return isset($this->reachable[$fromId][$toId]);
+    }
+
+    /**
+     * @return list<string> Shape IDs targeted by the members of `$shapeId`.
+     */
+    private function memberTargets(string $shapeId): array
+    {
+        $shape = $this->model->getShape($shapeId) ?? [];
+
+        return match ($shape['type'] ?? null) {
+            'structure', 'union' => \array_column(
+                $this->model->getMembers($shapeId),
+                'target'
+            ),
+            'list' => [$shape['member']['target'] ?? 'smithy.api#String'],
+            'map' => [
+                $shape['key']['target'] ?? 'smithy.api#String',
+                $shape['value']['target'] ?? 'smithy.api#String'
+            ],
+            default => []
+        };
+    }
+
+    /**
+     * Count the root schemas that calling `self::method($targetId)` builds
+     * eagerly: the target itself plus every root shape (struct or union)
+     * reachable from it through member targets. A root's own `schema()`
+     * method allocates that root plus its member schemas, so this is the
+     * number of roots materialized on a single operation's cold path when
+     * the member shares the target instead of copying one level.
+     *
+     * Used as an upper bound: reachability through a cycle-cut copy
+     * overcounts, which only makes the caller fall back to the one-level
+     * copy more often, never less. That keeps the single-op allocation at
+     * or below the inline copy it replaces.
+     */
+    private function acyclicRootBuildCount(string $targetId): int
+    {
+        $count = isset($this->rootShapes[$targetId]) ? 1 : 0;
+        foreach (\array_keys($this->reachableFrom($targetId)) as $reachedId) {
+            if (isset($this->rootShapes[$reachedId])) {
+                ++$count;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Return the set of shape IDs reachable from `$fromId` through member
+     * targets, memoized via {@see reaches()}.
+     *
+     * @return array<string, true>
+     */
+    private function reachableFrom(string $fromId): array
+    {
+        // Prime the memo, then read it back.
+        $this->reaches($fromId, $fromId);
+
+        return $this->reachable[$fromId] ?? [];
+    }
+
+    /**
      * Build inline members for a structure/union target.
+     *
+     * Shares the target's canonical member schemas
+     * (`self::method()->getMembers()`) only when the target cannot reach
+     * `$containerId` (so the eager call cannot recurse into a frame on the
+     * stack) AND the target's acyclic root build count is no larger than a
+     * one-level inline copy. The second guard bounds the single-operation
+     * cold path: sharing never materializes more roots than the copy it
+     * replaces, while whole-service builds still collapse to one instance
+     * per shape. Larger targets, and members on a cycle, are copied one
+     * level instead.
      *
      * @param array<string, true> $visited Cycle detection set
      */
     private function buildInlineMembers(
         string $targetId,
         string $targetType,
+        string $containerId,
         array $visited = []
     ): string
     {
@@ -910,6 +1067,24 @@ final class SchemasGenerator
             : $this->model->getMembers($targetId);
         if (empty($members)) {
             return '';
+        }
+
+        if (isset($this->rootShapes[$targetId])
+            && !$this->reaches($targetId, $containerId)
+            && $this->acyclicRootBuildCount($targetId) <= \count($members)
+        ) {
+            // Acyclic struct/union target whose eager build is no larger
+            // than a one-level inline copy: share the canonical member
+            // objects. `self::method()` builds the target's acyclic root
+            // closure, and the guard above caps that at the copy's own
+            // member count, so a single operation's cold path never
+            // allocates more than it did with the inline copy, while whole
+            // -service builds still collapse to one instance per shape.
+            $method = \lcfirst(
+                $this->symbolProvider->toShortClassName($targetId)
+            );
+
+            return ", members: self::{$method}()->getMembers()";
         }
 
         $parts = [];
