@@ -127,6 +127,7 @@ final class StructureGenerator
         // Determine if this is an error shape
         $isError = $category === ShapeCategory::Error;
         $errorFault = null;
+        $retryable = null;
         if ($isError) {
             $errorTraitValue = $this->model->getTrait(
                 $shapeId,
@@ -136,6 +137,21 @@ final class StructureGenerator
                 ? $errorTraitValue
                 : 'other';
             $writer->addImport('Smithy\\Core\\Exception\\ErrorFault');
+
+            // A modeled `retryable` error overrides the fault-derived retry
+            // default: it classifies as retryable, and as a throttle when the
+            // trait carries `throttling: true`.
+            if ($this->model->hasTrait($shapeId, 'smithy.api#retryable')) {
+                $trait = $this->model->getTrait(
+                    $shapeId,
+                    'smithy.api#retryable'
+                );
+                $retryable = [
+                    'throttling' => \is_array($trait)
+                        && ($trait['throttling'] ?? false) === true
+                ];
+                $writer->addImport('Smithy\\Core\\Retry\\RetrySafety');
+            }
         }
 
         // Register modeled member imports before resolving the error parent.
@@ -290,7 +306,8 @@ final class StructureGenerator
             $writer,
             $shapeId,
             $isError,
-            $errorFault
+            $errorFault,
+            $retryable
         );
 
 
@@ -597,7 +614,8 @@ final class StructureGenerator
         PhpCodeWriter $writer,
         string $shapeId,
         bool $isError = false,
-        ?string $errorFault = null
+        ?string $errorFault = null,
+        ?array $retryable = null
     ): void
     {
         $members = $this->model->getMembers($shapeId);
@@ -611,6 +629,7 @@ final class StructureGenerator
                     . $this->toErrorFaultCase($errorFault)
                     . ');'
                 );
+                $this->writeRetryableOverride($writer, $retryable);
                 $writer->closeBlock();
             } else {
                 $writer->writeLine('public function __construct() {}');
@@ -731,6 +750,7 @@ final class StructureGenerator
                     . $this->toErrorFaultCase($errorFault)
                     . ');'
                 );
+                $this->writeRetryableOverride($writer, $retryable);
             }
             foreach ($explicitlyDeclared as $memberName => $memberDef) {
                 if ($memberName === $paginationTokenMember
@@ -1758,6 +1778,36 @@ final class StructureGenerator
             'server' => 'Server',
             default => 'Other'
         };
+    }
+
+    /**
+     * Emit retry-classification overrides for a modeled `retryable` error.
+     *
+     * The generated exception extends a base implementing
+     * {@see \Smithy\Core\Retry\RetryInfoInterface}; setting the inherited
+     * override fields makes the error classify as retryable (and as a
+     * throttle when the trait carries `throttling: true`), regardless of the
+     * fault-derived default.
+     *
+     * @param array{throttling: bool}|null $retryable
+     */
+    private function writeRetryableOverride(
+        PhpCodeWriter $writer,
+        ?array $retryable
+    ): void
+    {
+        if ($retryable === null) {
+            return;
+        }
+
+        $writer->writeLine(
+            '$this->retrySafetyOverride = RetrySafety::Yes;'
+        );
+        $writer->writeLine(
+            '$this->throttleOverride = '
+            . ($retryable['throttling'] ? 'true' : 'false')
+            . ';'
+        );
     }
 
     /**
