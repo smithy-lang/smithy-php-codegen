@@ -802,9 +802,9 @@ final class SchemasGenerator
         array $visited = []
     ): string
     {
-        if (isset($visited[$targetId])) {
-            return '';
-        }
+        // On a cycle, keep the key and value members so the collection stays
+        // resolvable, but stop inlining so the schema stays finite.
+        $cut = isset($visited[$targetId]);
         $visited[$targetId] = true;
 
         $targetShape = $this->model->getShape($targetId);
@@ -831,13 +831,13 @@ final class SchemasGenerator
                 $memberTraits,
                 self::DIRECT_MEMBER_TRAITS_BY_ID
             );
-            $memberMembers = $this->buildInlineMembers(
+            $memberMembers = $cut ? '' : $this->buildInlineMembers(
                 $memberTarget,
                 $memberType,
                 $targetId,
                 $visited
             );
-            $memberCollectionParams = $this->buildCollectionParams(
+            $memberCollectionParams = $cut ? '' : $this->buildCollectionParams(
                 $memberTarget,
                 $memberType,
                 $visited
@@ -892,13 +892,13 @@ final class SchemasGenerator
                 $valueTraits,
                 self::DIRECT_MEMBER_TRAITS_BY_ID
             );
-            $valueMembers = $this->buildInlineMembers(
+            $valueMembers = $cut ? '' : $this->buildInlineMembers(
                 $valueTarget,
                 $valueType,
                 $targetId,
                 $visited
             );
-            $valueCollectionParams = $this->buildCollectionParams(
+            $valueCollectionParams = $cut ? '' : $this->buildCollectionParams(
                 $valueTarget,
                 $valueType,
                 $visited
