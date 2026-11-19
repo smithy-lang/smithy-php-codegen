@@ -13,6 +13,9 @@ use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Model\SmithyModel;
 use Smithy\Codegen\PhpSymbolProviderInterface;
 use Smithy\Codegen\Writer\PhpCodeWriter;
+use Smithy\Core\Serde\Schema;
+use Smithy\Core\Serde\TypeRegistryDeserializeTrait;
+use Smithy\Core\Serde\TypeRegistryInterface;
 
 /**
  * Generates a per-service `TypeRegistry` class that maps Smithy shape IDs
@@ -80,6 +83,9 @@ final class TypeRegistryGenerator
         $entries = $this->collectShapeEntries($serviceClosure);
 
         $writer = new PhpCodeWriter($namespace);
+        $writer->addImport(Schema::class);
+        $writer->addImport(TypeRegistryDeserializeTrait::class);
+        $writer->addImport(TypeRegistryInterface::class);
 
         $writer->writeDocBlock([
             "Shape-ID registry for the {$shortName} service.",
@@ -87,10 +93,16 @@ final class TypeRegistryGenerator
             'Populated once at codegen time from the service closure. Callers',
             'use `schemaFor` for lazy schema resolution, `classFor` for a raw',
             'class-string when they need to reflect on the generated type, and',
-            '`shapeIdFor` for the inverse lookup keyed by class.'
+            '`shapeIdFor` for the inverse lookup keyed by class. `deserialize`',
+            'builds the registered shape that a document\'s discriminator names.'
         ]);
-        $writer->writeLine("final class {$className}");
+        $writer->writeClassDeclaration(
+            "final class {$className}",
+            ['TypeRegistryInterface']
+        );
         $writer->openBlock('{');
+        $writer->writeLine('use TypeRegistryDeserializeTrait;');
+        $writer->writeLine();
 
         // Both directions of the map share the same source-of-truth entries.
         // Each direction is emitted as its own literal so lookups stay O(1)
@@ -125,7 +137,7 @@ final class TypeRegistryGenerator
             '',
             '@return class-string|null'
         ]);
-        $writer->writeLine('public static function classFor(string $shapeId): ?string');
+        $writer->writeLine('public function classFor(string $shapeId): ?string');
         $writer->openBlock('{');
         $writer->writeLine(
             'return self::CLASSES_BY_SHAPE_ID[$shapeId] ?? null;'
@@ -139,7 +151,7 @@ final class TypeRegistryGenerator
             '',
             '@param class-string $class'
         ]);
-        $writer->writeLine('public static function shapeIdFor(string $class): ?string');
+        $writer->writeLine('public function shapeIdFor(string $class): ?string');
         $writer->openBlock('{');
         $writer->writeLine('return self::SHAPE_IDS_BY_CLASS[$class] ?? null;');
         $writer->closeBlock();
@@ -153,8 +165,7 @@ final class TypeRegistryGenerator
             'Returns null when the shape ID is not registered.'
         ]);
         $writer->writeLine(
-            'public static function schemaFor(string $shapeId): '
-            . '?\\Smithy\\Core\\Serde\\Schema'
+            'public function schemaFor(string $shapeId): ?Schema'
         );
         $writer->openBlock('{');
         $writer->writeLine(
@@ -182,7 +193,7 @@ final class TypeRegistryGenerator
             '',
             '@return array<string, class-string>'
         ]);
-        $writer->writeLine('public static function all(): array');
+        $writer->writeLine('public function all(): array');
         $writer->openBlock('{');
         $writer->writeLine('return self::CLASSES_BY_SHAPE_ID;');
         $writer->closeBlock();
