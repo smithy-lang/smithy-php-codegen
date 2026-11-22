@@ -136,7 +136,8 @@ final class OperationGenerator
             ? [EffectiveAuthSchemes::NO_AUTH]
             : $this->model->getEffectiveAuthSchemeIds(
                 $serviceId,
-                $shapeId
+                $shapeId,
+                $this->settings->authSchemeIds
             );
 
         // Imports - schema + interface(s) + provider when needed

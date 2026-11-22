@@ -305,11 +305,15 @@ final class SmithyModel
     /**
      * Return the authentication schemes effective for an operation.
      *
+     * @param list<string> $authSchemeIds Auth scheme trait IDs known to the
+     *     caller, counted as service auth schemes when no auth trait applies.
+     *
      * @return list<string> Scheme IDs in priority order.
      */
     public function getEffectiveAuthSchemeIds(
         string $serviceId,
-        string $operationId
+        string $operationId,
+        array $authSchemeIds = []
     ): array
     {
         $service = $this->getShape($serviceId);
@@ -328,7 +332,8 @@ final class SmithyModel
         return EffectiveAuthSchemes::resolve(
             $this->shapes,
             $this->getTraits($serviceId),
-            $this->getTraits($operationId)
+            $this->getTraits($operationId),
+            $authSchemeIds
         );
     }
 

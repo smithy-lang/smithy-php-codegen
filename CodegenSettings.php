@@ -78,6 +78,8 @@ final class CodegenSettings
      *     namespace.
      * @param list<string>|null $operationSet Operation names or shape IDs
      *     included in a trimmed client. Null generates every operation.
+     * @param list<string> $authSchemeIds Auth scheme trait IDs counted as
+     *     service auth schemes when the model applies no auth trait.
      */
     public function __construct(
         public readonly string $namespace,
@@ -119,7 +121,8 @@ final class CodegenSettings
         ?string $clientConfigClass = null,
         public readonly ?array $operationSet = null,
         public readonly string $clientBaseInterface =
-            self::DEFAULT_CLIENT_BASE_INTERFACE
+            self::DEFAULT_CLIENT_BASE_INTERFACE,
+        public readonly array $authSchemeIds = []
     ) {
         $this->clientConfigClass = $clientConfigClass
             ?? self::DEFAULT_CLIENT_CONFIG_CLASS;
@@ -269,7 +272,8 @@ final class CodegenSettings
                 'clientBaseInterface',
                 'client_base_interface',
                 self::DEFAULT_CLIENT_BASE_INTERFACE
-            )
+            ),
+            authSchemeIds: $config['authSchemeIds'] ?? []
         );
     }
 
@@ -308,7 +312,8 @@ final class CodegenSettings
             'assumeAsciiEndpointStrings' =>
                 $this->assumeAsciiEndpointStrings,
             'clientConfigClass' => $this->clientConfigClass,
-            'clientBaseInterface' => $this->clientBaseInterface
+            'clientBaseInterface' => $this->clientBaseInterface,
+            'authSchemeIds' => $this->authSchemeIds
         ];
     }
 
@@ -556,6 +561,7 @@ final class CodegenSettings
         $this->validateRulesFunctions();
         $this->validateExtendedOpcodes();
         $this->validateOperationSet();
+        $this->validateAuthSchemeIds();
         $this->validateConstantMaps(
             $this->operationConstants,
             'operationConstants'
@@ -683,6 +689,25 @@ final class CodegenSettings
             ) {
                 throw new \InvalidArgumentException(
                     'extendedOpcodes must map names to byte values'
+                );
+            }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    private function validateAuthSchemeIds(): void
+    {
+        if (!\array_is_list($this->authSchemeIds)) {
+            throw new \InvalidArgumentException(
+                'authSchemeIds must be a list of shape IDs'
+            );
+        }
+        foreach ($this->authSchemeIds as $schemeId) {
+            if (!\is_string($schemeId) || $schemeId === '') {
+                throw new \InvalidArgumentException(
+                    'authSchemeIds must be a list of shape IDs'
                 );
             }
         }
@@ -955,7 +980,8 @@ final class CodegenSettings
             'assumeAsciiEndpointStrings',
             'assume_ascii_endpoint_strings',
             'clientConfigClass',
-            'client_config_class'
+            'client_config_class',
+            'authSchemeIds'
         ];
         $unknown = \array_diff(\array_keys($config), $known);
         if ($unknown !== []) {
