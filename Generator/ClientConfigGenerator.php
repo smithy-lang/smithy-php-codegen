@@ -18,6 +18,9 @@ use Smithy\Codegen\Writer\PhpCodeWriter;
  */
 final class ClientConfigGenerator
 {
+    private const ABSTRACT_CLIENT_CONFIG =
+        'Smithy\\Client\\AbstractClientConfig';
+
     /**
      * @internal
      */
@@ -54,9 +57,20 @@ final class ClientConfigGenerator
         $writer->writeDocBlock([
             "Configuration for {@see {$shortName}Client}."
         ]);
-        $writer->writeLine(
-            "final class {$className} extends {$configClass} {}"
-        );
+        if (\ltrim($this->settings->clientConfigClass, '\\')
+            !== self::ABSTRACT_CLIENT_CONFIG
+        ) {
+            $writer->writeLine(
+                "final class {$className} extends {$configClass} {}"
+            );
+        } else {
+            $writer->writeLine(
+                "final class {$className} extends {$configClass}"
+            );
+            $writer->openBlock('{');
+            $this->writeCopyWith($writer);
+            $writer->closeBlock();
+        }
 
         return new GeneratedFile(
             $this->settings->outputDir
@@ -65,6 +79,63 @@ final class ClientConfigGenerator
                 . '.php',
             $writer->toFileContent()
         );
+    }
+
+    /**
+     * Write the copy method that rebuilds the config from base fields.
+     */
+    private function writeCopyWith(PhpCodeWriter $writer): void
+    {
+        $writer->writeDocBlock([
+            'Shallow copy the config, overriding fields named in `$overrides`.',
+            '',
+            'Explicit `null` values keep the current value.',
+            '',
+            '@param array<string, mixed> $overrides'
+        ]);
+        $writer->writeLine(
+            'protected function copyWith(array $overrides): static'
+        );
+        $writer->openBlock('{');
+        foreach ([
+            '$protocol = \\array_key_exists(\'protocol\', $overrides)',
+            '    ? $overrides[\'protocol\']',
+            '    : $this->protocol;',
+            '$protocolId = \\array_key_exists(\'protocolId\', $overrides)',
+            '    ? $overrides[\'protocolId\']',
+            '    : $this->protocolId;',
+            '',
+            'return new static(',
+            '    transport: $overrides[\'transport\'] ?? $this->transport,',
+            '    endpointResolver: $overrides[\'endpointResolver\']',
+            '        ?? $this->endpointResolver,',
+            '    protocol: $protocol,',
+            '    protocolResolver: $overrides[\'protocolResolver\']',
+            '        ?? $this->protocolResolver,',
+            '    protocolId: $protocolId,',
+            '    interceptors: $overrides[\'interceptors\']',
+            '        ?? $this->interceptorChain,',
+            '    supportedAuthSchemes: $overrides[\'supportedAuthSchemes\']',
+            '        ?? $this->supportedAuthSchemes,',
+            '    authSchemeResolver: $overrides[\'authSchemeResolver\']',
+            '        ?? $this->authSchemeResolver,',
+            '    retryStrategy: $overrides[\'retryStrategy\']',
+            '        ?? $this->retryStrategy,',
+            '    retryScope: $overrides[\'retryScope\'] ?? $this->retryScope,',
+            '    context: $overrides[\'context\'] ?? $this->context,',
+            '    authSchemePreference: $overrides[\'authSchemePreference\']',
+            '        ?? $this->authSchemePreference,',
+            '    service: $overrides[\'service\'] ?? $this->service,',
+            '    pluginState: $overrides[\'pluginState\']',
+            '        ?? $this->getPluginState(),',
+            '    explicitFields: $this->explicitFieldsFor($overrides),',
+            '    identityResolvers: $overrides[\'identityResolvers\']',
+            '        ?? $this->identityResolvers',
+            ');'
+        ] as $line) {
+            $writer->writeLine($line);
+        }
+        $writer->closeBlock();
     }
 
     private function shortName(string $serviceShapeId): string
