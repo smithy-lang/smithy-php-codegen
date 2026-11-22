@@ -50,7 +50,8 @@ abstract class AbstractCodegenIntegration implements CodegenIntegrationInterface
     public function preprocessModel(
         SmithyModel $model,
         CodegenSettings $settings
-    ): SmithyModel {
+    ): SmithyModel
+    {
         return $model;
     }
 
@@ -58,7 +59,8 @@ abstract class AbstractCodegenIntegration implements CodegenIntegrationInterface
     public function customizeSettings(
         CodegenSettings $settings,
         SmithyModel $model
-    ): CodegenSettings {
+    ): CodegenSettings
+    {
         return $settings;
     }
 
@@ -67,7 +69,8 @@ abstract class AbstractCodegenIntegration implements CodegenIntegrationInterface
         PhpSymbolProviderInterface $symbolProvider,
         SmithyModel $model,
         CodegenSettings $settings
-    ): PhpSymbolProviderInterface {
+    ): PhpSymbolProviderInterface
+    {
         return $symbolProvider;
     }
 

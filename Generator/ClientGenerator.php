@@ -133,7 +133,8 @@ final class ClientGenerator
     public function generate(
         string $serviceShapeId,
         ServiceProjection $projection
-    ): GeneratedFile {
+    ): GeneratedFile
+    {
         $operations = $this->operationsForService(
             $serviceShapeId,
             $projection
@@ -271,7 +272,8 @@ final class ClientGenerator
     public function generateInterface(
         string $serviceShapeId,
         ServiceProjection $projection
-    ): GeneratedFile {
+    ): GeneratedFile
+    {
         $shortName = $this->clientShortName($serviceShapeId);
         $interfaceName = $shortName . 'ClientInterface';
         $namespace = $this->settings->namespace;
@@ -411,7 +413,8 @@ final class ClientGenerator
         PhpCodeWriter $writer,
         array $op,
         string $suffix = ''
-    ): void {
+    ): void
+    {
         // A doc block per method - Smithy `@documentation` on the
         // operation is the canonical description. drop it in verbatim
         // after light cleanup so IDEs surface it without any codegen
@@ -490,7 +493,8 @@ final class ClientGenerator
         PhpCodeWriter $writer,
         array $op,
         string $suffix = ''
-    ): void {
+    ): void
+    {
         $writer->writeDocBlock([
             "Create a paginator for {@see self::{$op['methodName']}()}.",
             '',
@@ -559,7 +563,8 @@ final class ClientGenerator
         string $waiterName,
         array $waiter,
         string $suffix = ''
-    ): void {
+    ): void
+    {
         $documentation = $waiter['documentation'];
         $docLines = [
             $documentation === null
@@ -719,7 +724,8 @@ final class ClientGenerator
     private function operationsForService(
         string $serviceShapeId,
         ServiceProjection $projection
-    ): array {
+    ): array
+    {
         $shape = $this->model->getShape($serviceShapeId);
         if ($shape === null) {
             throw new \InvalidArgumentException(

@@ -131,7 +131,8 @@ final class CodegenIntegrationSorter
         string $target,
         array &$edges,
         array &$indegrees
-    ): void {
+    ): void
+    {
         if (isset($edges[$source][$target])) {
             return;
         }

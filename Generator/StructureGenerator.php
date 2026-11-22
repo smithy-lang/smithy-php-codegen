@@ -1325,7 +1325,8 @@ final class StructureGenerator
     private function errorParentReference(
         PhpCodeWriter $writer,
         string $className
-    ): string {
+    ): string
+    {
         if (\strcasecmp(
             \ltrim($this->errorParentClass, '\\'),
             \ltrim($this->settings->resolveServiceExceptionClass(), '\\')

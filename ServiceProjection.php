@@ -41,7 +41,8 @@ final readonly class ServiceProjection
     public static function fromModel(
         SmithyModel $model,
         ?array $operationSet
-    ): self {
+    ): self
+    {
         $serviceIds = [];
         foreach ($model->getServiceShapes() as $shapeId => $_) {
             if (!\str_starts_with($shapeId, 'smithy.api#')) {
@@ -136,7 +137,8 @@ final readonly class ServiceProjection
         string $serviceShapeId,
         array $availableOperationIds,
         ?array $operationSet
-    ): array {
+    ): array
+    {
         if ($operationSet === null) {
             return $availableOperationIds;
         }
@@ -202,7 +204,8 @@ final readonly class ServiceProjection
         SmithyModel $model,
         string $serviceShapeId,
         array $operationIds
-    ): array {
+    ): array
+    {
         $seeds = [$serviceShapeId, ...$operationIds];
         $service = $model->getShape($serviceShapeId);
         foreach ($service['errors'] ?? [] as $error) {
@@ -221,7 +224,8 @@ final readonly class ServiceProjection
     private static function containsErrors(
         SmithyModel $model,
         array $shapeIds
-    ): bool {
+    ): bool
+    {
         foreach ($shapeIds as $shapeId => $_) {
             if ($model->hasTrait($shapeId, 'smithy.api#error')) {
                 return true;
@@ -239,7 +243,8 @@ final readonly class ServiceProjection
     private static function buildShapeClosure(
         SmithyModel $model,
         array $seeds
-    ): array {
+    ): array
+    {
         $closure = [];
         $queue = $seeds;
 
@@ -316,7 +321,8 @@ final readonly class ServiceProjection
         SmithyModel $model,
         array $operationIds,
         array $shapeIds
-    ): bool {
+    ): bool
+    {
         if (self::operationsUseUnit($model, $operationIds)) {
             return true;
         }
@@ -361,7 +367,8 @@ final readonly class ServiceProjection
     private static function operationsUseUnit(
         SmithyModel $model,
         array $operationIds
-    ): bool {
+    ): bool
+    {
         foreach ($operationIds as $operationId) {
             $operation = $model->getShape($operationId);
             if ($operation === null

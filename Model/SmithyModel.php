@@ -392,7 +392,8 @@ final class SmithyModel
     public function getValidatedServiceWaiters(
         string $serviceShapeId,
         array $operationShapeIds
-    ): array {
+    ): array
+    {
         $serviceOperationIds = $this->getServiceOperationIds($serviceShapeId);
         $waitersByOperation = [];
 

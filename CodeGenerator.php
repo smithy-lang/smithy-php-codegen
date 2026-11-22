@@ -405,7 +405,8 @@ final class CodeGenerator
         PhpSymbolProviderInterface $symbolProvider,
         SmithyModel $model,
         CodegenSettings $settings
-    ): void {
+    ): void
+    {
         $shapeSets = [
             $model->getStructureShapes(),
             $model->getEnumShapes(),
@@ -459,7 +460,8 @@ final class CodeGenerator
         PhpSymbolProviderInterface $symbolProvider,
         string $shapeId,
         string $expectedNamespace
-    ): void {
+    ): void
+    {
         $shortName = $symbolProvider->toShortClassName($shapeId);
         $expectedClass = $expectedNamespace . '\\' . $shortName;
         $actualClass = \ltrim(
@@ -482,7 +484,8 @@ final class CodeGenerator
      */
     private function validateSchemaAccessorSymbols(
         array $serviceClosure
-    ): void {
+    ): void
+    {
         $accessors = [];
         $shapeSets = [
             $this->model->getStructureShapes(),
