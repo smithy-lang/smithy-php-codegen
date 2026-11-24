@@ -376,7 +376,7 @@ final class ClientGenerator
      *     inputFqcn: string,
      *     outputShort: string,
      *     outputFqcn: string,
-     *     inputHasMembers: bool,
+     *     inputRequired: bool,
      *     paginated: bool,
      *     waiters: array<string, array<string, mixed>>,
      *     documentation: ?string,
@@ -392,7 +392,7 @@ final class ClientGenerator
         $writer->writeLine('return $this->executeOperation(');
         $writer->pushIndent();
         $writer->writeLine("{$op['operationShort']}::instance(),");
-        $inputArgument = $op['inputHasMembers']
+        $inputArgument = $op['inputRequired']
             ? '$input,'
             : "\$input ?? new {$op['inputShort']}(),";
         $writer->writeLine(
@@ -427,10 +427,10 @@ final class ClientGenerator
 
         // Compose the parameter text once so both the single-line
         // candidate and the multi-line fallback share the same rules
-        // (required inputs are non-nullable. zero-member inputs get the
-        // `?...$input = null` defaulted form).
+        // (inputs with a required member are non-nullable; other inputs
+        // get the `?...$input = null` defaulted form).
         $parameters = [
-            $op['inputHasMembers']
+            $op['inputRequired']
                 ? "{$op['inputShort']} \$input"
                 : "?{$op['inputShort']} \$input = null",
             '?RequestOverrideConfig $overrides = null'
@@ -456,7 +456,7 @@ final class ClientGenerator
      *     inputFqcn: string,
      *     outputShort: string,
      *     outputFqcn: string,
-     *     inputHasMembers: bool,
+     *     inputRequired: bool,
      *     paginated: bool,
      *     waiters: array<string, array<string, mixed>>,
      *     documentation: ?string,
@@ -475,7 +475,7 @@ final class ClientGenerator
         $writer->pushIndent();
         $writer->writeLine("{$op['operationShort']}::instance(),");
         $writer->writeLine(
-            $op['inputHasMembers']
+            $op['inputRequired']
                 ? '$input'
                 : "\$input ?? new {$op['inputShort']}()"
         );
@@ -502,7 +502,7 @@ final class ClientGenerator
         ]);
 
         $parameters = [
-            $op['inputHasMembers']
+            $op['inputRequired']
                 ? "{$op['inputShort']} \$input"
                 : "?{$op['inputShort']} \$input = null"
         ];
@@ -760,8 +760,8 @@ final class ClientGenerator
     /**
      * Walk the projected operations and resolve each to the tuple
      * the method emitter needs: method name, operation class, input
-     * class, output class, and whether the input has any codegen-
-     * emitted members.
+     * class, output class, and whether the input has a required
+     * member.
      *
      * @param list<string> $operationIds
      * @return list<array{
@@ -772,7 +772,7 @@ final class ClientGenerator
      *     inputFqcn: string,
      *     outputShort: string,
      *     outputFqcn: string,
-     *     inputHasMembers: bool,
+     *     inputRequired: bool,
      *     paginated: bool,
      *     waiters: array<string, array<string, mixed>>,
      *     documentation: ?string,
@@ -807,7 +807,7 @@ final class ClientGenerator
             $inputPhpType = $this->symbolProvider->toPhpType($inputShapeId);
             $outputPhpType = $this->symbolProvider->toPhpType($outputShapeId);
 
-            $inputHasMembers = $this->shapeHasMembers($inputShapeId);
+            $inputRequired = $this->shapeHasRequiredMembers($inputShapeId);
             $waiters = $waitersByOperation[$opShapeId] ?? [];
             \ksort($waiters, SORT_STRING);
 
@@ -819,7 +819,7 @@ final class ClientGenerator
                 'inputFqcn' => $inputPhpType->fqcn ?? '',
                 'outputShort' => $outputPhpType->typeHint,
                 'outputFqcn' => $outputPhpType->fqcn ?? '',
-                'inputHasMembers' => $inputHasMembers,
+                'inputRequired' => $inputRequired,
                 'paginated' =>
                     $this->model->getValidatedPaginationTrait($opShapeId)
                         !== null,
@@ -836,22 +836,22 @@ final class ClientGenerator
     }
 
     /**
-     * True when the target shape is a structure with at least one
-     * emitted member. Smithy's `Unit` shape (`smithy.api#Unit`) is
-     * membership-empty by construction, so it lands in the "false"
-     * branch and the caller-defaults the argument.
+     * True when the target shape has a member with the `@required` trait.
+     * Smithy's `Unit` shape (`smithy.api#Unit`) has no members, so the
+     * caller defaults the argument.
      */
-    private function shapeHasMembers(string $shapeId): bool
+    private function shapeHasRequiredMembers(string $shapeId): bool
     {
         if (\str_starts_with($shapeId, 'smithy.api#')) {
             return false;
         }
-        $shape = $this->model->getShape($shapeId);
-        if ($shape === null) {
-            return false;
+        foreach ($this->model->getMembers($shapeId) as $member) {
+            if (isset($member['traits']['smithy.api#required'])) {
+                return true;
+            }
         }
-        $members = $shape['members'] ?? null;
-        return \is_array($members) && $members !== [];
+
+        return false;
     }
 
     /**

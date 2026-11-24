@@ -638,10 +638,6 @@ final class StructureGenerator
         }
 
         $allMembers = $this->getMembersIndexed($shapeId);
-        $paginationTokenMember =
-            $this->model->getPaginationInputTokenMember($shapeId);
-        $paginationPageSizeMember =
-            $this->model->getPaginationPageSizeMember($shapeId);
 
         // Scalar enum/intEnum and effective-default members are declared
         // separately and assigned in the constructor body.
@@ -649,8 +645,6 @@ final class StructureGenerator
         foreach ($allMembers as $memberName => $memberDef) {
             if ($this->isScalarEnumMember($shapeId, $memberName)
                 || $this->model->isMemberDefaulted($shapeId, $memberName)
-                || $memberName === $paginationTokenMember
-                || $memberName === $paginationPageSizeMember
                 || $this->isInheritedExceptionProperty(
                     $shapeId,
                     $memberName
@@ -662,18 +656,7 @@ final class StructureGenerator
 
         if (!empty($explicitlyDeclared)) {
             foreach ($explicitlyDeclared as $memberName => $memberDef) {
-                if ($memberName === $paginationTokenMember
-                    || $memberName === $paginationPageSizeMember
-                ) {
-                    $this->writeMutablePaginationProperty(
-                        $writer,
-                        $shapeId,
-                        $memberName
-                    );
-                } elseif ($this->isScalarEnumMember(
-                    $shapeId,
-                    $memberName
-                )) {
+                if ($this->isScalarEnumMember($shapeId, $memberName)) {
                     $this->writeExplicitEnumProperty(
                         $writer,
                         $shapeId,
@@ -753,18 +736,7 @@ final class StructureGenerator
                 $this->writeRetryableOverride($writer, $retryable);
             }
             foreach ($explicitlyDeclared as $memberName => $memberDef) {
-                if ($memberName === $paginationTokenMember
-                    || $memberName === $paginationPageSizeMember
-                ) {
-                    $propertyName =
-                        $this->symbolProvider->toPropertyName($memberName);
-                    $writer->writeLine(
-                        "\$this->{$propertyName} = \${$propertyName};"
-                    );
-                } elseif ($this->isScalarEnumMember(
-                    $shapeId,
-                    $memberName
-                )) {
+                if ($this->isScalarEnumMember($shapeId, $memberName)) {
                     $this->writeEnumNormalizationAssignment(
                         $writer,
                         $shapeId,
@@ -803,32 +775,6 @@ final class StructureGenerator
         } else {
             $writer->writeLine(') {}');
         }
-    }
-
-    /**
-     * Emit a private writable pagination property.
-     *
-     * @return void
-     */
-    private function writeMutablePaginationProperty(
-        PhpCodeWriter $writer,
-        string $shapeId,
-        string $memberName
-    ): void
-    {
-        $phpType = $this->symbolProvider->toMemberType(
-            $shapeId,
-            $memberName
-        );
-        $propertyName = $this->symbolProvider->toPropertyName($memberName);
-
-        if ($phpType->requiresImport() && $phpType->fqcn !== null) {
-            $writer->addImport($phpType->fqcn);
-        }
-
-        $writer->writeLine(
-            "private {$phpType->nullable()} \${$propertyName};"
-        );
     }
 
     /**
@@ -936,10 +882,7 @@ final class StructureGenerator
                 . 'string|array|null $token): self'
         );
         $writer->openBlock('{');
-        $writer->writeLine('$copy = clone $this;');
-        $writer->writeLine("\$copy->{$propertyName} = \$token;");
-        $writer->writeLine();
-        $writer->writeLine('return $copy;');
+        $this->writeWithPaginationMemberBody($writer, $memberName, '$token');
         $writer->closeBlock();
     }
 
@@ -976,11 +919,31 @@ final class StructureGenerator
             'public function withPaginationPageSize(int $pageSize): self'
         );
         $writer->openBlock('{');
-        $writer->writeLine('$copy = clone $this;');
-        $writer->writeLine("\$copy->{$propertyName} = \$pageSize;");
-        $writer->writeLine();
-        $writer->writeLine('return $copy;');
+        $this->writeWithPaginationMemberBody(
+            $writer,
+            $memberName,
+            '$pageSize'
+        );
         $writer->closeBlock();
+    }
+
+    /**
+     * Emit a pagination copy method body that delegates to
+     * `withMemberValue()`. Calling `schema()` first fills the member schema
+     * statics.
+     */
+    private function writeWithPaginationMemberBody(
+        PhpCodeWriter $writer,
+        string $memberName,
+        string $value
+    ): void
+    {
+        $constName = $this->toSchemaConstName($memberName);
+        $writer->writeLine('self::schema();');
+        $writer->writeLine();
+        $writer->writeLine(
+            "return \$this->withMemberValue(self::\${$constName}, {$value});"
+        );
     }
 
     /**
@@ -1044,20 +1007,14 @@ final class StructureGenerator
         );
 
         if ($mode === 'optional') {
-            // Nullable parameter - guard the whole assignment so a null
-            // input leaves the typed property uninitialized. This matches
-            // the `isset($this->prop)` gate used by `serializeMembers()`
-            // and avoids a redundant write when the user passed nothing.
-            $writer->writeLine("if (\${$parameterName} !== null) {");
-            $writer->pushIndent();
+            // A null input is stored as null, so the property is always
+            // initialized.
             $writer->writeLine(
-                "\$this->{$propertyName} = \${$parameterName} "
-                . "instanceof {$enumClass}"
+                "\$this->{$propertyName} = \${$parameterName} === null"
+                . " || \${$parameterName} instanceof {$enumClass}"
                 . " ? \${$parameterName}"
                 . " : {$enumClass}::fromValue(\${$parameterName});"
             );
-            $writer->popIndent();
-            $writer->writeLine('}');
         } else {
             $value = "\${$parameterName}";
             if ($mode === 'defaulted') {
@@ -1124,22 +1081,15 @@ final class StructureGenerator
         }
 
         $isEnumMember = $this->isScalarEnumMember($shapeId, $memberName);
-        $isPaginationToken = $memberName
-            === $this->model->getPaginationInputTokenMember($shapeId);
-        $isPaginationPageSize = $memberName
-            === $this->model->getPaginationPageSizeMember($shapeId);
-        $isPaginationMember =
-            $isPaginationToken || $isPaginationPageSize;
         $isInheritedExceptionProperty =
             $this->isInheritedExceptionProperty($shapeId, $memberName);
         $isDefaulted = $mode === 'defaulted';
 
         // Annotations only attach to promoted-property declarations. Scalar
-        // enum, effective-default, pagination, and inherited exception
-        // members declare the property separately above the constructor.
+        // enum, effective-default, and inherited exception members declare
+        // the property separately above the constructor.
         if (!$isEnumMember
             && !$isDefaulted
-            && !$isPaginationMember
             && !$isInheritedExceptionProperty
         ) {
             $this->writeMemberAnnotations($writer, $shapeId, $memberName);
@@ -1158,8 +1108,7 @@ final class StructureGenerator
         }
 
         $typeHint = $phpType->nullable();
-        $promotion = $isPaginationMember
-            || $isInheritedExceptionProperty
+        $promotion = $isInheritedExceptionProperty
             || $isDefaulted
                 ? ''
                 : 'public readonly ';
@@ -1522,11 +1471,8 @@ final class StructureGenerator
             $shapeId,
             $memberName
         );
-        $optionalEnum = $this->isScalarEnumMember($shapeId, $memberName)
-            && !$this->model->isMemberRequired($shapeId, $memberName)
-            && !$this->model->isMemberDefaulted($shapeId, $memberName);
 
-        return "\$this->{$propertyName}" . ($optionalEnum ? ' ?? null' : '');
+        return "\$this->{$propertyName}";
     }
 
 
@@ -1655,6 +1601,13 @@ final class StructureGenerator
                 "(string) \$this->{$propertyName}"
             )
         };
+
+        // Defaulted members are never null, so they need no guard.
+        if ($this->model->isMemberDefaulted($shapeId, $memberName)) {
+            $writer->writeLine($writeCall);
+
+            return;
+        }
 
         $writer->writeLine("if (isset(\$this->{$propertyName})) {");
         $writer->pushIndent();

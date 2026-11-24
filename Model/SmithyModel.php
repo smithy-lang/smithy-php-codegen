@@ -1143,12 +1143,11 @@ final class SmithyModel
      *
      * Two ordering modes:
      *
-     * **Fresh (no preserved order):** required first, then defaulted, then
-     * optional. This is the default for first-time codegen - required
-     * members must come first because they have no parameter default,
-     * defaulted second so their PHP literal defaults sit adjacent, and
-     * pure-optional last with `= null`. PHP allows non-default parameters
-     * before defaulted ones but not the other way around.
+     * **Fresh (no preserved order):** members with the `@required` trait
+     * first, then defaulted, then optional, each group in model order.
+     * Grouping reads the `@required` trait alone, so required members of
+     * client-optional operation inputs still lead the constructor. Every
+     * constructor parameter defaults to `null`, so any order is valid PHP.
      *
      * **Preserved (regeneration):** honor the `$preservedOrder` list first,
      * appending any model members not present in that list at the tail
@@ -1181,14 +1180,13 @@ final class SmithyModel
         $members = $this->getMembers($shapeId);
 
         if ($preservedOrder === null || $preservedOrder === []) {
-            // Fresh ordering - historical required-first / defaulted /
-            // optional partition. Same as pre-sidecar behavior. every
-            // existing test/fixture keeps working.
+            // Fresh ordering: `@required` members, then defaulted, then
+            // optional.
             $required = [];
             $defaulted = [];
             $optional = [];
             foreach ($members as $name => $def) {
-                if ($this->isMemberRequired($shapeId, $name)) {
+                if (isset($def['traits']['smithy.api#required'])) {
                     $required[$name] = $def;
                 } elseif ($this->isMemberDefaulted($shapeId, $name)) {
                     $defaulted[$name] = $def;
@@ -1223,7 +1221,7 @@ final class SmithyModel
             if (isset($consumed[$name])) {
                 continue;
             }
-            if ($this->isMemberRequired($shapeId, $name)) {
+            if (isset($def['traits']['smithy.api#required'])) {
                 $newRequired[$name] = $def;
             } elseif ($this->isMemberDefaulted($shapeId, $name)) {
                 $newDefaulted[$name] = $def;
