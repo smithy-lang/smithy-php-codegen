@@ -13,8 +13,6 @@ use Smithy\Codegen\Model\SmithyModel;
 
 /**
  * Read endpoint parameters from a service ruleset.
- *
- * @internal
  */
 final class EndpointRulesetIntrospector
 {
@@ -25,8 +23,6 @@ final class EndpointRulesetIntrospector
     private readonly array $excludedParameters;
 
     /**
-     * @internal
-     *
      * @param list<string> $excludedParameters
      */
     public function __construct(

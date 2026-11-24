@@ -11,8 +11,6 @@ namespace Smithy\Codegen\Generator;
 
 /**
  * Transactionally replaces a managed generated-output directory.
- *
- * @internal
  */
 final class GeneratedOutputPublisher
 {

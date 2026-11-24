@@ -53,8 +53,6 @@ final class CodeGenerator
 
     /**
      * @param iterable<CodegenIntegrationInterface> $integrations
-     *
-     * @internal
      */
     public function __construct(
         CodegenSettings $settings,

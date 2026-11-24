@@ -37,9 +37,6 @@ final class GeneratedFile
     private const WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN =
         '/\A[A-Za-z]:\\\\/';
 
-    /**
-     * @internal
-     */
     public function __construct(
         /** The file path where this file should be written */
         public readonly string $path,

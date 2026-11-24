@@ -37,9 +37,6 @@ final class PhpCodeWriter
 
     private string $namespace = '';
 
-    /**
-     * @internal
-     */
     public function __construct(string $namespace = '')
     {
         $this->namespace = $namespace;

@@ -200,7 +200,7 @@ final class StructureGenerator
             );
         }
 
-        // FromMembersTrait provides the `@internal` `fromMembers()` sink used
+        // FromMembersTrait provides the `fromMembers()` sink used
         // by the runtime deserializer. Every generated struct participates in
         // the codec deserialization path, so the trait applies unconditionally.
         $writer->addImport('Smithy\\Core\\Shape\\FromMembersTrait');
