@@ -10,6 +10,9 @@
         "smithy/client": "self.version",
         "smithy/core": "self.version"
     },
+    "bin": [
+        "bin/smithy-php-codegen"
+    ],
     "autoload": {
         "psr-4": {
             "Smithy\\Codegen\\": ""
