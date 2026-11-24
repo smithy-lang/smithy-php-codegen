@@ -219,7 +219,7 @@ protocol and transport.
 
 ## Design
 
-See [Code Generation Design](../../docs/design/codegen/smithy-php-code-generation.md).
+See [Code Generation Design](https://github.com/smithy-lang/smithy-php/blob/main/docs/design/codegen/smithy-php-code-generation.md).
 
 ## Contributing
 
