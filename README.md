@@ -170,6 +170,25 @@ Symbol-provider decorators may customize type mappings, short class names, and
 property names, but generated classes remain in the namespaces selected by
 codegen settings.
 
+### Service exception members
+
+`serviceExceptionMembers()` returns writers for members of the generated
+service exception class. Each writer receives the class body writer, indented
+for members, and the class short name, and adds imports through that writer.
+The class gets a body when any integration returns a writer.
+
+```php
+use Smithy\Codegen\CodegenSettings;
+use Smithy\Codegen\Writer\PhpCodeWriter;
+
+public function serviceExceptionMembers(CodegenSettings $settings): iterable
+{
+    yield static function (PhpCodeWriter $writer, string $className): void {
+        $writer->writeLine("public const SERVICE = '{$className}';");
+    };
+}
+```
+
 ## Generated Output
 
 The generator emits the enabled artifacts:
@@ -188,7 +207,8 @@ Every generated service includes a `<ServiceName>Exception`. Modeled errors
 extend it, and protocols use it for unmodeled service errors. It extends
 `Smithy\Core\Exception\ApiException` by default. `serviceExceptionClass`
 changes the generated class name, while `baseServiceException` changes its
-parent.
+parent. Integrations add members to this class through
+`serviceExceptionMembers()`.
 
 ## Stability
 

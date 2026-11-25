@@ -79,4 +79,10 @@ abstract class AbstractCodegenIntegration implements CodegenIntegrationInterface
     {
         return [];
     }
+
+    /** @inheritDoc */
+    public function serviceExceptionMembers(CodegenSettings $settings): iterable
+    {
+        return [];
+    }
 }

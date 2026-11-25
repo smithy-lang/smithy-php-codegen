@@ -14,6 +14,7 @@ use Smithy\Codegen\CodegenSettings;
 use Smithy\Codegen\Generator\GeneratedFile;
 use Smithy\Codegen\Model\SmithyModel;
 use Smithy\Codegen\PhpSymbolProviderInterface;
+use Smithy\Codegen\Writer\PhpCodeWriter;
 
 /**
  * Customize Smithy PHP code generation.
@@ -82,4 +83,15 @@ interface CodegenIntegrationInterface
      * @return iterable<GeneratedFile>
      */
     public function generateAdditionalFiles(CodegenContext $context): iterable;
+
+    /**
+     * Return writers for members of the generated service exception class.
+     *
+     * Each writer receives the class body writer, indented for members, and
+     * the generated class short name. Writers add imports through the same
+     * writer. The class gets a body when any integration returns a writer.
+     *
+     * @return iterable<\Closure(PhpCodeWriter, string): void>
+     */
+    public function serviceExceptionMembers(CodegenSettings $settings): iterable;
 }

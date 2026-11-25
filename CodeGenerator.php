@@ -133,7 +133,8 @@ final class CodeGenerator
         );
         $this->serviceGenerator = new ServiceGenerator($model, $settings);
         $this->serviceExceptionGenerator = new ServiceExceptionGenerator(
-            $settings
+            $settings,
+            $this->integrations
         );
         $this->schemasGenerator = new SchemasGenerator(
             $model,

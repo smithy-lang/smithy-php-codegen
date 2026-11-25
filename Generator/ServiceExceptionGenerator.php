@@ -10,21 +10,27 @@ declare(strict_types=1);
 namespace Smithy\Codegen\Generator;
 
 use Smithy\Codegen\CodegenSettings;
+use Smithy\Codegen\Integration\CodegenIntegrationInterface;
 use Smithy\Codegen\Writer\PhpCodeWriter;
 
 /**
  * Generate the service-level exception class.
  *
  * This is a catch-all exception for any error from a specific service.
- * All modeled error shapes for the service extend this class.
+ * All modeled error shapes for the service extend this class. Integrations
+ * add class members through
+ * {@see CodegenIntegrationInterface::serviceExceptionMembers()}.
  */
 final class ServiceExceptionGenerator
 {
     /**
+     * @param iterable<CodegenIntegrationInterface> $integrations
+     *
      * @internal
      */
     public function __construct(
-        private readonly CodegenSettings $settings
+        private readonly CodegenSettings $settings,
+        private readonly iterable $integrations = []
     ) {}
 
     /**
@@ -69,7 +75,25 @@ final class ServiceExceptionGenerator
         ]);
 
         $declaration = "class {$className} extends {$parentClass}";
-        if (\strlen($declaration . ' {}')
+        $memberWriters = [];
+        foreach ($this->integrations as $integration) {
+            foreach ($integration->serviceExceptionMembers($this->settings)
+                as $memberWriter
+            ) {
+                $memberWriters[] = $memberWriter;
+            }
+        }
+        if ($memberWriters !== []) {
+            $writer->writeLine($declaration);
+            $writer->openBlock('{');
+            foreach ($memberWriters as $index => $memberWriter) {
+                if ($index > 0) {
+                    $writer->writeLine();
+                }
+                $memberWriter($writer, $className);
+            }
+            $writer->closeBlock();
+        } elseif (\strlen($declaration . ' {}')
             <= PhpCodeWriter::MAX_GENERATED_LINE_WIDTH
         ) {
             $writer->writeLine($declaration . ' {}');
