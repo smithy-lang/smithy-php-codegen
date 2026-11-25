@@ -184,7 +184,9 @@ final class CodegenSettings
             ),
             baseServiceException: $config['baseServiceException'] ?? null,
             serviceExceptionClass: $config['serviceExceptionClass'] ?? null,
-            rulesFunctions: $config['rulesFunctions'] ?? [],
+            rulesFunctions: self::rulesFunctionsFrom(
+                $config['rulesFunctions'] ?? []
+            ),
             extendedOpcodes: $config['extendedOpcodes'] ?? [],
             preserveExistingMemberOrder: self::booleanAliasedValue(
                 $config,
@@ -558,7 +560,6 @@ final class CodegenSettings
             $this->clientConfigClass,
             'clientConfigClass'
         );
-        $this->validateRulesFunctions();
         $this->validateExtendedOpcodes();
         $this->validateOperationSet();
         $this->validateAuthSchemeIds();
@@ -661,18 +662,31 @@ final class CodegenSettings
     }
 
     /**
-     * @return void
+     * Validate the `rulesFunctions` value of a decoded configuration.
+     *
+     * @return array<string, RulesFunctionInterface>
      */
-    private function validateRulesFunctions(): void
+    private static function rulesFunctionsFrom(mixed $value): array
     {
-        foreach ($this->rulesFunctions as $name => $function) {
+        if (!\is_array($value)) {
+            throw new \InvalidArgumentException(
+                'rulesFunctions must be an array'
+            );
+        }
+
+        $functions = [];
+        foreach ($value as $name => $function) {
             if (!$function instanceof RulesFunctionInterface) {
                 throw new \InvalidArgumentException(
                     'rulesFunctions must contain RulesFunctionInterface '
                         . "instances, got {$name}"
                 );
             }
+
+            $functions[(string) $name] = $function;
         }
+
+        return $functions;
     }
 
     /**

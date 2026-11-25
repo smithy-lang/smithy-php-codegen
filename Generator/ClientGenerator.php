@@ -764,6 +764,7 @@ final class ClientGenerator
      * member.
      *
      * @param list<string> $operationIds
+     * @param array<string, array<string, array<string, mixed>>> $waitersByOperation
      * @return list<array{
      *     methodName: string,
      *     operationShort: string,
@@ -777,9 +778,6 @@ final class ClientGenerator
      *     waiters: array<string, array<string, mixed>>,
      *     documentation: ?string,
      * }>
-     *
-     * @param array<string, array<string, array<string, mixed>>>
-     *        $waitersByOperation
      */
     private function collectOperations(
         array $operationIds,

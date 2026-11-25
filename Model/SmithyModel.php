@@ -1260,7 +1260,7 @@ final class SmithyModel
     /**
      * Check whether a service directly contains an operation.
      *
-     * @param array<string, mixed> $service Service shape definition.
+     * @param string $serviceShapeId Fully-qualified service shape ID.
      * @param string $operationShapeId Fully-qualified operation shape ID.
      *
      * @return bool True when the operation is directly contained.

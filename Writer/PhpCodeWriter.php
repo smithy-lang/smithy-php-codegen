@@ -300,6 +300,21 @@ final class PhpCodeWriter
             return [$text];
         }
 
+        // A `@param` tag only parses when its type and `$name` share a line,
+        // so the first break may not come before the end of `$name`.
+        $minBreak = 0;
+        $nameStart = \str_starts_with($text, '@param ')
+            ? \strpos($text, ' $')
+            : false;
+        if ($nameStart !== false) {
+            $nameEnd = \strpos($text, ' ', $nameStart + 2);
+            if ($nameEnd === false) {
+                return [$text];
+            }
+
+            $minBreak = $nameEnd;
+        }
+
         $lines = [];
         $remaining = $text;
         while (\strlen($remaining) > $width) {
@@ -307,6 +322,10 @@ final class PhpCodeWriter
             if ($breakAt === false || $breakAt === 0) {
                 $breakAt = $width;
             }
+            if ($breakAt < $minBreak) {
+                $breakAt = $minBreak;
+            }
+            $minBreak = 0;
             $lines[] = \substr($remaining, 0, $breakAt);
             $remaining = \ltrim(\substr($remaining, $breakAt));
         }

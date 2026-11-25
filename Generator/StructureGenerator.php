@@ -1213,9 +1213,24 @@ final class StructureGenerator
             return [$line];
         }
 
+        // The type and `$name` must share the first line, or the tag does
+        // not parse. Break the first line no earlier than the end of `$name`.
+        $nameStart = strpos($line, ' $');
+        $nameEnd = $nameStart === false
+            ? false
+            : strpos($line, ' ', $nameStart + 2);
+        if ($nameStart !== false && $nameEnd === false) {
+            return [$line];
+        }
+
         $lines = [];
         $remaining = $line;
         $isFirst = true;
+        if ($nameEnd !== false && $nameEnd > $maxContentWidth) {
+            $lines[] = substr($line, 0, $nameEnd);
+            $remaining = ltrim(substr($line, $nameEnd));
+            $isFirst = false;
+        }
 
         while (strlen($remaining) > $maxContentWidth) {
             $width = $isFirst ? $maxContentWidth : $maxContentWidth - strlen(
