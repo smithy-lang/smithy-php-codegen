@@ -183,11 +183,6 @@ final class PriorCodegenEvaluator
                 $e
             );
         }
-        if (!\is_array($tokens)) {
-            throw new \RuntimeException(
-                "Failed to tokenize prior Schemas.php at {$path}"
-            );
-        }
 
         // Two-level state:
         //   $shapes: [shapeId => [memberIndex => memberName]]
@@ -320,14 +315,13 @@ final class PriorCodegenEvaluator
                             continue;
                         }
 
-                        if ($name === 'memberIndex') {
-                            if (\is_array($val) && $val[0] === \T_LNUMBER) {
-                                $stack[$topIdx]['currentMember']['index']
-                                    = (int) $val[1];
-                            }
-                            $i = $k;
-                            continue;
+                        // Only `memberIndex` is left.
+                        if (\is_array($val) && $val[0] === \T_LNUMBER) {
+                            $stack[$topIdx]['currentMember']['index']
+                                = (int) $val[1];
                         }
+                        $i = $k;
+                        continue;
                     }
                 }
             }

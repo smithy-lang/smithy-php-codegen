@@ -116,6 +116,9 @@ final class SchemasGenerator
     /** @var array<string, array<string, true>> Shape ID => reachable shape IDs */
     private array $reachable = [];
 
+    /** @var array<string, true> Shared member keys already cached in the current method */
+    private array $sharedKeysInMethod = [];
+
     /**
      * @internal
      */
@@ -272,6 +275,7 @@ final class SchemasGenerator
      */
     private function writeInitMethod(PhpCodeWriter $writer, string $shapeId): void
     {
+        $this->sharedKeysInMethod = [];
         // Symbol provider centralizes the error-suffix rule.
         $className = $this->symbolProvider->toShortClassName($shapeId);
 
@@ -355,6 +359,7 @@ final class SchemasGenerator
      */
     private function writeUnionInitMethod(PhpCodeWriter $writer, string $shapeId): void
     {
+        $this->sharedKeysInMethod = [];
         $className = $this->symbolProvider->toShortClassName($shapeId);
         $methodName = lcfirst($className);
         $rootTargetClass = $this->targetClassReference($shapeId);
@@ -423,6 +428,7 @@ final class SchemasGenerator
         array $shape
     ): void
     {
+        $this->sharedKeysInMethod = [];
         $className = $this->symbolProvider->toShortClassName($shapeId);
         $methodName = lcfirst($className);
         $shapeType = $shape['type'] ?? 'enum';
@@ -849,14 +855,17 @@ final class SchemasGenerator
             $listMemberId = $targetId . '$member';
 
             return ', listMember: '
-                . $this->sharedCollectionMember($targetId, $listMemberId)
-                . "new Schema(id: '{$listMemberId}', "
-                . "type: {$memberTypeEnum}, memberName: 'member', "
-                . "memberIndex: 0"
-                . "{$memberMembers}{$memberCollectionParams}"
-                . "{$listMemberTraitsStr}{$listMemberTraitsByIdStr}"
-                . "{$listMemberDirectTraitsByIdStr}"
-                . "{$memberTargetClass})";
+                . $this->sharedCollectionMember(
+                    $targetId,
+                    $listMemberId,
+                    "new Schema(id: '{$listMemberId}', "
+                        . "type: {$memberTypeEnum}, memberName: 'member', "
+                        . "memberIndex: 0"
+                        . "{$memberMembers}{$memberCollectionParams}"
+                        . "{$listMemberTraitsStr}{$listMemberTraitsByIdStr}"
+                        . "{$listMemberDirectTraitsByIdStr}"
+                        . "{$memberTargetClass})"
+                );
         }
 
         if ($targetType === 'map') {
@@ -910,44 +919,59 @@ final class SchemasGenerator
             $mapKeyId = $targetId . '$key';
             $mapValueId = $targetId . '$value';
 
-            return ', mapKey: '
-                . $this->sharedCollectionMember($targetId, $mapKeyId)
-                . "new Schema(id: '{$mapKeyId}', "
-                . "type: {$keyTypeEnum}, memberName: 'key', memberIndex: 0"
-                . "{$keyTraitsStr}"
-                . "{$keyTraitsByIdStr}{$keyDirectTraitsByIdStr}), "
-                . 'mapValue: '
-                . $this->sharedCollectionMember($targetId, $mapValueId)
-                . "new Schema(id: '{$mapValueId}', "
-                . "type: {$valueTypeEnum}, memberName: 'value', "
-                . "memberIndex: 1"
-                . "{$valueMembers}{$valueCollectionParams}"
-                . "{$valueTraitsStr}{$valueTraitsByIdStr}"
-                . "{$valueDirectTraitsByIdStr}"
-                . "{$valueTargetClass})";
+            // Build the key first: it comes first in the emitted code.
+            $mapKey = $this->sharedCollectionMember(
+                $targetId,
+                $mapKeyId,
+                "new Schema(id: '{$mapKeyId}', "
+                    . "type: {$keyTypeEnum}, memberName: 'key', memberIndex: 0"
+                    . "{$keyTraitsStr}"
+                    . "{$keyTraitsByIdStr}{$keyDirectTraitsByIdStr})"
+            );
+
+            return ', mapKey: ' . $mapKey . ', mapValue: '
+                . $this->sharedCollectionMember(
+                    $targetId,
+                    $mapValueId,
+                    "new Schema(id: '{$mapValueId}', "
+                        . "type: {$valueTypeEnum}, memberName: 'value', "
+                        . "memberIndex: 1"
+                        . "{$valueMembers}{$valueCollectionParams}"
+                        . "{$valueTraitsStr}{$valueTraitsByIdStr}"
+                        . "{$valueDirectTraitsByIdStr}"
+                        . "{$valueTargetClass})"
+                );
         }
 
         return '';
     }
 
     /**
-     * Build the `??=` prefix that caches a list or map member schema.
+     * Wrap a list or map member schema in the shared member cache.
      *
      * Outside a cycle, a collection's member schema depends only on the
      * collection shape, so every use site shares one instance. On a cycle,
      * the cut point depends on the use site, so each site keeps its own.
+     * The first use in a method fills the cache with `??=`; later uses in
+     * the same method read it, because the first use has already run.
      */
     private function sharedCollectionMember(
         string $collectionId,
-        string $memberId
+        string $memberId,
+        string $schema
     ): string
     {
         if ($this->reaches($collectionId, $collectionId)) {
-            return '';
+            return $schema;
         }
 
-        return self::SHARED_MEMBERS_CLASS
-            . "::\$shared['{$memberId}'] ??= ";
+        $shared = self::SHARED_MEMBERS_CLASS . "::\$shared['{$memberId}']";
+        if (isset($this->sharedKeysInMethod[$memberId])) {
+            return $shared;
+        }
+        $this->sharedKeysInMethod[$memberId] = true;
+
+        return "{$shared} ??= {$schema}";
     }
 
     /**

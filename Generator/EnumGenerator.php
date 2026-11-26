@@ -225,7 +225,7 @@ final class EnumGenerator
         $writer->writeLine();
 
         // EnumInterface::getValue()
-        $writer->writeLine('public function getValue(): string|int');
+        $writer->writeLine("public function getValue(): {$backingType}");
         $writer->openBlock('{');
         $writer->writeLine('return $this->value;');
         $writer->closeBlock();

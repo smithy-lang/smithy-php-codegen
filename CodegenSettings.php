@@ -1070,7 +1070,7 @@ final class CodegenSettings
                     $normalized[$shapeId][$index] = $value;
                     continue;
                 }
-                if (!\is_string($index) || $index === '') {
+                if ($index === '') {
                     throw new \InvalidArgumentException(
                         'operationSchemaTraits must use non-negative integer '
                             . 'indexes or non-empty trait IDs'
@@ -1105,11 +1105,6 @@ final class CodegenSettings
             );
         }
         foreach ($value as $key => $member) {
-            if (!\is_int($key) && !\is_string($key)) {
-                throw new \InvalidArgumentException(
-                    "{$name} contains an unsupported array key"
-                );
-            }
             self::validateLiteralValue($member, $name);
         }
     }

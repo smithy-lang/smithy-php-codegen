@@ -270,7 +270,11 @@ final class OperationGenerator
         $writer->closeBlock();
         $writer->writeLine();
 
-        $writer->writeLine('public function getServiceId(): ?string');
+        $writer->writeLine(
+            $serviceId === null
+                ? 'public function getServiceId(): ?string'
+                : 'public function getServiceId(): string'
+        );
         $writer->openBlock('{');
         $writer->writeLine('return self::SERVICE_ID;');
         $writer->closeBlock();
@@ -384,7 +388,11 @@ final class OperationGenerator
         $writer->closeBlock();
         $writer->writeLine();
 
-        $writer->writeLine('public function getRequestTarget(): ?string');
+        $writer->writeLine(
+            $requestTarget === null
+                ? 'public function getRequestTarget(): ?string'
+                : 'public function getRequestTarget(): string'
+        );
         $writer->openBlock('{');
         $writer->writeLine(
             $requestTarget === null
@@ -488,7 +496,8 @@ final class OperationGenerator
         ?string $outputShortClass
     ): void
     {
-        $writer->writeLine("public function {$methodName}(): ?Schema");
+        $returnType = $memberInfo === null ? '?Schema' : 'Schema';
+        $writer->writeLine("public function {$methodName}(): {$returnType}");
         $writer->openBlock('{');
         if ($memberInfo === null) {
             $writer->writeLine('return null;');

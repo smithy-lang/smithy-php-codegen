@@ -252,11 +252,11 @@ final class GeneratedOutputPublisher
                 );
             }
 
+            // chown() changes only the owner, so the first stat's group
+            // still applies.
             $group = $outputMetadata['gid'];
-            $stagingMetadata = @\stat($stagingDirectory);
-            if ($stagingMetadata === false
-                || ($group !== $stagingMetadata['gid']
-                    && !@\chgrp($stagingDirectory, $group))
+            if ($group !== $stagingMetadata['gid']
+                && !@\chgrp($stagingDirectory, $group)
             ) {
                 throw new \RuntimeException(
                     'Unable to preserve generated output group.'
