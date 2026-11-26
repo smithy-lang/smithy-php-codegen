@@ -208,7 +208,7 @@ final class StructureGenerator
 
 
         // Write doc comment from shape documentation trait
-        $this->writeClassDoc($writer, $shapeId);
+        $this->writeClassDoc($writer, $shapeId, $withArrayAccess);
 
         // Build interface list. Every structure implements
         // `SerializableStructInterface` unconditionally. ArrayAccess opts
@@ -364,7 +364,11 @@ final class StructureGenerator
         );
     }
 
-    private function writeClassDoc(PhpCodeWriter $writer, string $shapeId): void
+    private function writeClassDoc(
+        PhpCodeWriter $writer,
+        string $shapeId,
+        bool $withArrayAccess = false
+    ): void
     {
         $docLines = [];
 
@@ -399,6 +403,14 @@ final class StructureGenerator
             $docLines[] = '@sensitive Contains sensitive data. Do not log.';
         }
 
+        // Offsets are wire member names; values are member values.
+        if ($withArrayAccess) {
+            if ($docLines !== []) {
+                $docLines[] = '';
+            }
+            $docLines[] = '@implements \ArrayAccess<string, mixed>';
+        }
+
         if (!empty($docLines)) {
             $writer->writeDocBlock($docLines);
         }
@@ -410,6 +422,8 @@ final class StructureGenerator
      * Historical order wins when a prior state exists. Otherwise members
      * use required, defaulted, then optional order. Iteration index matches
      * the assigned `memberIndex`.
+     *
+     * @return array<string, array<string, mixed>>
      */
     private function getMembersIndexed(string $shapeId): array
     {
@@ -610,6 +624,9 @@ final class StructureGenerator
     }
 
 
+    /**
+     * @param array{throttling: bool}|null $retryable
+     */
     private function writeConstructor(
         PhpCodeWriter $writer,
         string $shapeId,
@@ -833,7 +850,15 @@ final class StructureGenerator
             $writer->addImport($phpType->fqcn);
         }
 
-        $this->writeMemberAnnotations($writer, $shapeId, $memberName);
+        $this->writeMemberAnnotations(
+            $writer,
+            $shapeId,
+            $memberName,
+            $phpType->docType !== null
+                && $phpType->docType !== $phpType->typeHint
+                ? $phpType->docType
+                : null
+        );
         $writer->writeLine(
             "public readonly {$phpType->typeHint} \${$propertyName};"
         );
@@ -872,10 +897,13 @@ final class StructureGenerator
         $writer->closeBlock();
         $writer->writeLine();
 
+        // The parameter type matches PaginatedRequestInterface; the member
+        // itself holds only its modeled token type.
         $writer->writeDocBlock([
             'Create a copy with a pagination token.',
             '',
-            "@param {$phpType->nullableDocType()} \$token"
+            '@param string|array<array-key, mixed>|null $token Token of type '
+                . "`{$phpType->nullableDocType()}`."
         ]);
         $writer->writeLine(
             'public function withPaginationToken('
@@ -1038,7 +1066,8 @@ final class StructureGenerator
     private function writeMemberAnnotations(
         PhpCodeWriter $writer,
         string $shapeId,
-        string $memberName
+        string $memberName,
+        ?string $varType = null
     ): void
     {
         $members = $this->model->getMembers($shapeId);
@@ -1057,7 +1086,9 @@ final class StructureGenerator
         ) {
             $annotations[] = '@sensitive';
         }
-        if ($annotations !== []) {
+        if ($varType !== null) {
+            $writer->writeDocBlock([...$annotations, "@var {$varType}"]);
+        } elseif ($annotations !== []) {
             $writer->writeLine('/** ' . implode(' ', $annotations) . ' */');
         }
     }
@@ -1366,6 +1397,8 @@ final class StructureGenerator
      * Emit serializeMembers() using Schemas::$ClassName_MemberName references.
      * Ensures schema is initialized via Schemas init method, then references
      * member schemas directly from the centralized Schemas class.
+     *
+     * @param array<string, array<string, mixed>> $members
      */
     private function writeSerializeMembersGeneric(
         PhpCodeWriter $writer,
@@ -1495,6 +1528,8 @@ final class StructureGenerator
     /**
      * Emit a single member's serialization call using self::$S_MEMBER_NAME.
      * References the local private static member schema property.
+     *
+     * @param array<string, mixed> $memberDef
      */
     private function writeSerializeMemberCallSchemas(
         PhpCodeWriter $writer,

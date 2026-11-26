@@ -612,6 +612,7 @@ final class CodegenSettings
     }
 
     /**
+     * @param array<mixed> $setting
      * @return void
      */
     private function validateArrayTraitSetting(

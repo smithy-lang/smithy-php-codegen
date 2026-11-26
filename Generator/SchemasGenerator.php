@@ -421,6 +421,8 @@ final class SchemasGenerator
      * `targetClass` so {@see Schema::resolveTarget()} and
      * {@see \Smithy\Core\Shape\Utils\ArrayShapeSerializer::fromArray()} can
      * route to the enum's `fromValue()` factory.
+     *
+     * @param array<string, mixed> $shape
      */
     private function writeEnumInitMethod(
         PhpCodeWriter $writer,
@@ -468,6 +470,8 @@ final class SchemasGenerator
 
     /**
      * Build the Schema constructor expression for a member.
+     *
+     * @param array<string, mixed> $memberDef
      */
     private function buildMemberSchemaExpression(
         string $parentShapeId,
@@ -537,6 +541,8 @@ final class SchemasGenerator
     /**
      * Get all members in canonical constructor order (required -> defaulted ->
      * optional). Iteration index matches the assigned `memberIndex`.
+     *
+     * @return array<string, array<string, mixed>>
      */
     private function getMembersIndexed(string $shapeId): array
     {
@@ -575,6 +581,9 @@ final class SchemasGenerator
 
     /**
      * Build serde-relevant traits for a member.
+     *
+     * @param array<string, mixed> $memberTraits
+     * @return array<string, mixed>
      */
     private function buildMemberTraits(array $memberTraits): array
     {
@@ -589,6 +598,8 @@ final class SchemasGenerator
 
     /**
      * Propagate serialization-relevant traits from the target shape to the member traits.
+     *
+     * @param array<string, mixed> $traits
      */
     private function propagateTargetTraits(string $targetId, array &$traits): void
     {
@@ -618,6 +629,8 @@ final class SchemasGenerator
 
     /**
      * Render populated dense-trait indexes without null padding.
+     *
+     * @param array<string, mixed> $traits
      */
     private function renderTraitsArray(array $traits): string
     {

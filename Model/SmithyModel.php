@@ -51,6 +51,10 @@ final class SmithyModel
     /** @var array<string, string> Input shape ID => pagination page-size member */
     private array $paginationPageSizeMembers = [];
 
+    /**
+     * @param array<string, array<string, mixed>> $shapes
+     * @param array<string, mixed> $metadata
+     */
     private function __construct(
         string $smithyVersion,
         array $shapes,

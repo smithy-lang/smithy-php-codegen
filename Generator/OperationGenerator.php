@@ -531,6 +531,7 @@ final class OperationGenerator
      *        Error discriminator metadata.
      * @param array<int|string, mixed> $configuredTraits
      * @param array<string, mixed> $directTraitsById
+     * @param list<string>|null $requestCompressionEncodings
      */
     private function writeOperationSchemaMethod(
         PhpCodeWriter $writer,
@@ -847,6 +848,8 @@ final class OperationGenerator
 
     /**
      * Get structure members in generated schema-index order.
+     *
+     * @return array<string, array<string, mixed>>
      */
     private function getMembersIndexed(string $shapeId): array
     {

@@ -135,6 +135,9 @@ final class ServiceGenerator
         $writer->writeLine();
 
         // operations()
+        $writer->writeDocBlock([
+            '@return list<class-string>'
+        ]);
         $writer->writeLine('public static function operations(): array');
         $writer->openBlock('{');
         if (empty($operationImports)) {

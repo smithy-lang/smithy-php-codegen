@@ -128,6 +128,9 @@ final class EnumGenerator
         $writer->writeLine();
 
         // Private static cache for known singletons
+        // String values that look like integers become int keys.
+        $knownKeyType = $backingType === 'int' ? 'int' : 'array-key';
+        $writer->writeLine("/** @var array<{$knownKeyType}, self> */");
         $writer->writeLine('private static array $known = [];');
         $writer->writeLine();
 

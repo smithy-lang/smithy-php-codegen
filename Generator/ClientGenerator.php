@@ -476,9 +476,10 @@ final class ClientGenerator
         $writer->writeLine("{$op['operationShort']}::instance(),");
         $writer->writeLine(
             $op['inputRequired']
-                ? '$input'
-                : "\$input ?? new {$op['inputShort']}()"
+                ? '$input,'
+                : "\$input ?? new {$op['inputShort']}(),"
         );
+        $writer->writeLine("{$op['outputShort']}::class");
         $writer->popIndent();
         $writer->writeLine(');');
         $writer->closeBlock();

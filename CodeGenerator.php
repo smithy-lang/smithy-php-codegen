@@ -379,6 +379,9 @@ final class CodeGenerator
 
     /**
      * Determine if a shape should be generated.
+     *
+     * @param array<string, mixed> $shape
+     * @param array<string, true> $serviceClosure
      */
     private function shouldGenerateShape(
         string $shapeId,

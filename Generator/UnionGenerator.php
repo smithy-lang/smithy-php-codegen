@@ -263,6 +263,9 @@ final class UnionGenerator
         );
     }
 
+    /**
+     * @param array<string, mixed> $memberDef
+     */
     private function generateVariantClass(
         string $shapeId,
         string $memberName,
@@ -296,6 +299,13 @@ final class UnionGenerator
             "final readonly class {$variantClassName} extends {$baseClassName}"
         );
         $writer->openBlock('{');
+        $valueDocType = $phpType->docType !== null
+            && $phpType->docType !== $phpType->typeHint
+            ? $phpType->docType
+            : null;
+        if ($valueDocType !== null) {
+            $writer->writeDocBlock(["@param {$valueDocType} \$value"]);
+        }
         $writer->writeLine(
             "public function __construct(public {$phpType->typeHint} \$value) {}"
         );
@@ -310,6 +320,9 @@ final class UnionGenerator
         $writer->writeLine("return '{$memberName}';");
         $writer->closeBlock();
         $writer->writeLine();
+        if ($valueDocType !== null) {
+            $writer->writeDocBlock(["@return {$valueDocType}"]);
+        }
         $writer->writeLine("public function value(): {$phpType->typeHint}");
         $writer->openBlock('{');
         $writer->writeLine('return $this->value;');
@@ -380,6 +393,9 @@ final class UnionGenerator
         );
     }
 
+    /**
+     * @param array<string, array{factory: string, class: string}> $variantNames
+     */
     private function writeFactoryMethods(
         PhpCodeWriter $writer,
         string $shapeId,
@@ -405,8 +421,17 @@ final class UnionGenerator
             // Write documentation
             $traits = $memberDef['traits'] ?? [];
             $memberDoc = $traits['smithy.api#documentation'] ?? null;
-            if ($memberDoc !== null) {
-                $writer->writeDocBlock([(string) $memberDoc]);
+            $docLines = $memberDoc !== null ? [(string) $memberDoc] : [];
+            if ($phpType->docType !== null
+                && $phpType->docType !== $phpType->typeHint
+            ) {
+                if ($docLines !== []) {
+                    $docLines[] = '';
+                }
+                $docLines[] = "@param {$phpType->docType} \$value";
+            }
+            if ($docLines !== []) {
+                $writer->writeDocBlock($docLines);
             }
 
             $writer->writeLine(
@@ -472,6 +497,9 @@ final class UnionGenerator
     }
 
 
+    /**
+     * @param array<string, array{factory: string, class: string}> $variantNames
+     */
     private function writeCreateMethod(
         PhpCodeWriter $writer,
         string $shapeId,
@@ -515,6 +543,9 @@ final class UnionGenerator
         $writer->closeBlock();
     }
 
+    /**
+     * @param array<string, array{factory: string, class: string}> $variantNames
+     */
     private function writeCreateByIndexMethod(
         PhpCodeWriter $writer,
         string $shapeId,
