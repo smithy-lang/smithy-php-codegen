@@ -677,7 +677,8 @@ final class UnionGenerator
     private function cleanDocumentation(string $text): string
     {
         $text = strip_tags($text);
-        $text = preg_replace('/\s+/', ' ', $text);
+        $text = preg_replace('/\s+/', ' ', $text)
+            ?? throw new \RuntimeException('Unable to collapse documentation whitespace.');
         return trim($text);
     }
 }

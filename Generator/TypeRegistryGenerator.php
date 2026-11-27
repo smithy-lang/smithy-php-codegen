@@ -24,7 +24,7 @@ use Smithy\Core\Serde\TypeRegistryInterface;
  * The registry surfaces three lookups. `schemaFor(shapeId)` returns the
  * lazy `Schema` for a shape (via a `[Class, 'schema']` callable that
  * dispatches through the generated shape class's `schema()` static). The
- * counterpart `classFor(shapeId)` returns the PHP class-string, and
+ * counterpart `classFor(shapeId)` returns the generated class name, and
  * `shapeIdFor(class)` is the inverse mapping used by application code
  * that starts from a typed instance.
  *
@@ -91,8 +91,8 @@ final class TypeRegistryGenerator
             "Shape-ID registry for the {$shortName} service.",
             '',
             'Populated once at codegen time from the service closure. Callers',
-            'use `schemaFor` for lazy schema resolution, `classFor` for a raw',
-            'class-string when they need to reflect on the generated type, and',
+            'use `schemaFor` for lazy schema resolution, `classFor` for the',
+            'class name when they need to reflect on the generated type, and',
             '`shapeIdFor` for the inverse lookup keyed by class. `deserialize`',
             'builds the registered shape that a document\'s discriminator names.'
         ]);
@@ -132,10 +132,8 @@ final class TypeRegistryGenerator
 
         $writer->writeLine();
         $writer->writeDocBlock([
-            'Return the generated PHP class-string for a Smithy shape ID,',
-            'or null when the ID is unknown to this service.',
-            '',
-            '@return class-string|null'
+            'Return the generated class name for a Smithy shape ID,',
+            'or null when the ID is unknown to this service.'
         ]);
         $writer->writeLine('public function classFor(string $shapeId): ?string');
         $writer->openBlock('{');

@@ -701,7 +701,7 @@ final class OperationGenerator
      *
      * @param array<mixed> $value
      *
-     * @return list<string>
+     * @return non-empty-list<string>
      */
     private function arrayLiteralLines(
         array $value,

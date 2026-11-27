@@ -1010,8 +1010,8 @@ final class StructureGenerator
     /**
      * Emit the constructor-body line that normalizes a scalar enum/intEnum
      * member's input. The parameter is `MyEnum|<scalar>(|null)`. the
-     * resolved property is always the enum object (or null on the optional
-     * path). The `instanceof` branch is the fast path for the typed-object
+     * resolved property is the enum object, or null on the required and
+     * optional paths. The `instanceof` branch is the fast path for the typed-object
      * case. the wire-scalar branch falls through to `MyEnum::fromValue()`.
      *
      * @param 'required'|'defaulted'|'optional' $mode
@@ -1034,9 +1034,9 @@ final class StructureGenerator
             $targetId ?? 'smithy.api#String'
         );
 
-        if ($mode === 'optional') {
-            // A null input is stored as null, so the property is always
-            // initialized.
+        if ($mode !== 'defaulted') {
+            // Required and optional members store a null input as null, so
+            // the property is always initialized.
             $writer->writeLine(
                 "\$this->{$propertyName} = \${$parameterName} === null"
                 . " || \${$parameterName} instanceof {$enumClass}"
@@ -1044,20 +1044,16 @@ final class StructureGenerator
                 . " : {$enumClass}::fromValue(\${$parameterName});"
             );
         } else {
-            $value = "\${$parameterName}";
-            if ($mode === 'defaulted') {
-                $default = $this->renderMemberDefaultExpression(
-                    $writer,
-                    $shapeId,
-                    $memberName
-                );
-                $value .= " ?? {$default}";
-            }
+            $default = $this->renderMemberDefaultExpression(
+                $writer,
+                $shapeId,
+                $memberName
+            );
             $writer->writeLine(
                 "\$this->{$propertyName} = \${$parameterName} "
                 . "instanceof {$enumClass}"
                 . " ? \${$parameterName}"
-                . " : {$enumClass}::fromValue({$value});"
+                . " : {$enumClass}::fromValue(\${$parameterName} ?? {$default});"
             );
         }
 
@@ -1214,7 +1210,8 @@ final class StructureGenerator
         // Strip HTML tags, keeping content
         $text = strip_tags($text);
         // Collapse multiple whitespace/newlines into single spaces
-        $text = preg_replace('/\s+/', ' ', $text);
+        $text = preg_replace('/\s+/', ' ', $text)
+            ?? throw new \RuntimeException('Unable to collapse documentation whitespace.');
         // Trim
         return trim($text);
     }
@@ -1715,10 +1712,12 @@ final class StructureGenerator
     {
         // Insert underscore before each uppercase letter that follows a
         // lowercase/digit
-        $snake = preg_replace('/([a-z0-9])([A-Z])/', '$1_$2', $memberName);
+        $snake = preg_replace('/([a-z0-9])([A-Z])/', '$1_$2', $memberName)
+            ?? throw new \RuntimeException("Unable to convert {$memberName} to a constant name.");
         // Handle consecutive uppercase (e.g., "SSECustomerKey" ->
         // "SSE_Customer_Key")
-        $snake = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1_$2', $snake);
+        $snake = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1_$2', $snake)
+            ?? throw new \RuntimeException("Unable to convert {$memberName} to a constant name.");
         return 'SCHEMA_' . strtoupper($snake);
     }
 
