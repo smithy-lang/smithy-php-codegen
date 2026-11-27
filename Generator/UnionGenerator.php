@@ -67,7 +67,7 @@ final class UnionGenerator
      * and one for each variant subclass.
      *
      * @param string $shapeId Fully-qualified shape ID
-     * @return GeneratedFile[]
+     * @return list<GeneratedFile>
      */
     public function generate(string $shapeId): array
     {

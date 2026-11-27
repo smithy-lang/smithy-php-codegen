@@ -173,7 +173,7 @@ final class CodeGenerator
     /**
      * Generate PHP types for all shapes in the model.
      *
-     * @return GeneratedFile[] List of generated files
+     * @return list<GeneratedFile> List of generated files
      */
     public function generate(): array
     {
@@ -186,7 +186,7 @@ final class CodeGenerator
     }
 
     /**
-     * @return GeneratedFile[]
+     * @return list<GeneratedFile>
      */
     private function generateProjection(ServiceProjection $projection): array
     {

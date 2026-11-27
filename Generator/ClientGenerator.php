@@ -17,6 +17,20 @@ use Smithy\Codegen\Writer\PhpCodeWriter;
 
 /**
  * Generate a typed service client.
+ *
+ * @phpstan-type ClientOperation array{
+ *     methodName: string,
+ *     operationShort: string,
+ *     operationFqcn: string,
+ *     inputShort: string,
+ *     inputFqcn: string,
+ *     outputShort: string,
+ *     outputFqcn: string,
+ *     inputRequired: bool,
+ *     paginated: bool,
+ *     waiters: array<string, array<string, mixed>>,
+ *     documentation: ?string,
+ * }
  */
 final class ClientGenerator
 {
@@ -368,19 +382,7 @@ final class ClientGenerator
      * the caller is responsible for placement (imports, blank-line
      * separators between methods).
      *
-     * @param array{
-     *     methodName: string,
-     *     operationShort: string,
-     *     operationFqcn: string,
-     *     inputShort: string,
-     *     inputFqcn: string,
-     *     outputShort: string,
-     *     outputFqcn: string,
-     *     inputRequired: bool,
-     *     paginated: bool,
-     *     waiters: array<string, array<string, mixed>>,
-     *     documentation: ?string,
-     * } $op
+     * @param ClientOperation $op
      *
      * @return void
      */
@@ -448,19 +450,7 @@ final class ClientGenerator
     /**
      * Emit a typed `<operation>Paginated` method.
      *
-     * @param array{
-     *     methodName: string,
-     *     operationShort: string,
-     *     operationFqcn: string,
-     *     inputShort: string,
-     *     inputFqcn: string,
-     *     outputShort: string,
-     *     outputFqcn: string,
-     *     inputRequired: bool,
-     *     paginated: bool,
-     *     waiters: array<string, array<string, mixed>>,
-     *     documentation: ?string,
-     * } $op
+     * @param ClientOperation $op
      *
      * @return void
      */
@@ -720,7 +710,7 @@ final class ClientGenerator
     /**
      * Resolve and sort the operations exposed by a generated client.
      *
-     * @return list<array<string, mixed>>
+     * @return list<ClientOperation>
      */
     private function operationsForService(
         string $serviceShapeId,
@@ -766,19 +756,7 @@ final class ClientGenerator
      *
      * @param list<string> $operationIds
      * @param array<string, array<string, array<string, mixed>>> $waitersByOperation
-     * @return list<array{
-     *     methodName: string,
-     *     operationShort: string,
-     *     operationFqcn: string,
-     *     inputShort: string,
-     *     inputFqcn: string,
-     *     outputShort: string,
-     *     outputFqcn: string,
-     *     inputRequired: bool,
-     *     paginated: bool,
-     *     waiters: array<string, array<string, mixed>>,
-     *     documentation: ?string,
-     * }>
+     * @return list<ClientOperation>
      */
     private function collectOperations(
         array $operationIds,
